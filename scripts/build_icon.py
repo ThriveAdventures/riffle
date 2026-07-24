@@ -36,6 +36,13 @@ def main() -> int:
     side = min(tile.size)
     tile = ImageOps.fit(tile, (side, side), centering=(0.5, 0.5))
 
+    # Shave any painted edge bevel off the artwork (image models like to
+    # frame the tile in bright trim that reads badly once masked), then a
+    # controlled hairline is added back below.
+    inset = int(side * 0.05)
+    tile = tile.crop((inset, inset, side - inset, side - inset))
+    side = tile.size[0]
+
     # Apple icon grid: 824px tile centered on a 1024 canvas.
     TILE, CANVAS = 824, 1024
     tile = tile.resize((TILE, TILE), Image.LANCZOS)
@@ -46,6 +53,12 @@ def main() -> int:
     d.rounded_rectangle([0, 0, TILE - 1, TILE - 1], radius=radius, fill=255)
     tile_rgba = tile.convert("RGBA")
     tile_rgba.putalpha(corner)
+
+    stroke = Image.new("RGBA", (TILE, TILE), (0, 0, 0, 0))
+    sd0 = ImageDraw.Draw(stroke)
+    sd0.rounded_rectangle([1, 1, TILE - 2, TILE - 2], radius=radius,
+                          outline=(255, 255, 255, 30), width=3)
+    tile_rgba.alpha_composite(stroke)
 
     canvas = Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))
     shadow = Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))
