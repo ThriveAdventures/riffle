@@ -158,8 +158,31 @@ scripts/build_app.sh                         # build + install to /Applications
 ```
 
 The app is plain Swift and AppKit, no dependencies, about a dozen small
-files. After a rebuild, macOS may require re-toggling Accessibility because
-the ad-hoc code signature changes with every build.
+files.
+
+### Stable signing (grant permissions once)
+
+macOS ties Accessibility grants to the app's code-signing identity. The
+build script signs with a local certificate named "Riffle Local Signing"
+when one exists in your keychain, so the grant survives rebuilds. Create
+it once per machine (the trust step asks for your password):
+
+```bash
+openssl req -x509 -newkey rsa:2048 -keyout riffle-key.pem -out riffle-cert.pem \
+  -days 3650 -nodes -subj "/CN=Riffle Local Signing" \
+  -addext "keyUsage=digitalSignature" -addext "extendedKeyUsage=codeSigning" \
+  -addext "basicConstraints=CA:FALSE"
+openssl pkcs12 -export -legacy -out riffle.p12 -inkey riffle-key.pem \
+  -in riffle-cert.pem -passout pass:rifflelocal
+security import riffle.p12 -k ~/Library/Keychains/login.keychain-db \
+  -P rifflelocal -T /usr/bin/codesign
+security add-trusted-cert -p codeSign -k ~/Library/Keychains/login.keychain-db riffle-cert.pem
+rm riffle-key.pem riffle.p12 riffle-cert.pem
+```
+
+Without it, builds fall back to ad-hoc signing and Accessibility must be
+re-granted after every rebuild (the build script clears the stale entry
+automatically in that case so the prompt is at least honest).
 
 Logs: `~/Library/Application Support/Riffle/riffle.log` (app) and
 `whisper-server.log` (transcription server).

@@ -22,13 +22,17 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp bundle/Info.plist "$APP/Contents/Info.plist"
 cp .build/release/Riffle "$APP/Contents/MacOS/Riffle"
 [ -f assets/AppIcon.icns ] && cp assets/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
-codesign --force --sign - "$APP"
 
-# The ad-hoc signature changes with every build, which strands the old
-# Accessibility grant on a stale entry: the System Settings toggle looks on
-# but the new binary is not trusted. Clear it so the app re-prompts cleanly.
-tccutil reset Accessibility com.thriveadventures.riffle >/dev/null 2>&1 || true
-
-echo "Installed $APP"
-echo "Note: re-grant Accessibility when the app prompts (required after"
-echo "every rebuild because the ad-hoc signature changes)."
+# Prefer a stable local signing identity so TCC grants (Accessibility)
+# survive rebuilds. See README: create one with openssl + security import,
+# named "Riffle Local Signing". Ad-hoc fallback changes identity every
+# build, which strands the old grant on a stale System Settings row, so in
+# that case we clear the entry to force a clean re-prompt.
+if security find-identity -v -p codesigning 2>/dev/null | grep -q "Riffle Local Signing"; then
+  codesign --force --sign "Riffle Local Signing" "$APP"
+  echo "Installed $APP (signed: Riffle Local Signing, permissions persist)"
+else
+  codesign --force --sign - "$APP"
+  tccutil reset Accessibility com.thriveadventures.riffle >/dev/null 2>&1 || true
+  echo "Installed $APP (ad-hoc signed: re-grant Accessibility when prompted)"
+fi
