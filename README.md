@@ -134,6 +134,10 @@ On an M-series Mac the whole pipeline typically lands text in about one
 second: a few hundred milliseconds of transcription and a few hundred of
 cleanup.
 
+- The microphone engine is pre-warmed at launch and stays warm for a few
+  seconds after each dictation, so speaking the instant you press the
+  hotkey does not clip your first syllable (the orange mic indicator
+  lingers for those few seconds accordingly)
 - Riffle spawns and supervises `whisper-server` itself (port 12391) and
   shuts it down on quit
 - Ollama runs as a Homebrew service; if it is not running, Riffle starts a

@@ -21,8 +21,14 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp bundle/Info.plist "$APP/Contents/Info.plist"
 cp .build/release/Riffle "$APP/Contents/MacOS/Riffle"
+[ -f assets/AppIcon.icns ] && cp assets/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 codesign --force --sign - "$APP"
 
+# The ad-hoc signature changes with every build, which strands the old
+# Accessibility grant on a stale entry: the System Settings toggle looks on
+# but the new binary is not trusted. Clear it so the app re-prompts cleanly.
+tccutil reset Accessibility com.thriveadventures.riffle >/dev/null 2>&1 || true
+
 echo "Installed $APP"
-echo "Note: after a rebuild, macOS may require re-granting Accessibility"
-echo "(the ad-hoc signature changes with every build)."
+echo "Note: re-grant Accessibility when the app prompts (required after"
+echo "every rebuild because the ad-hoc signature changes)."

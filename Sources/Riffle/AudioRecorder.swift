@@ -10,14 +10,20 @@ final class AudioRecorder {
         let peak: Float
     }
 
+    // One engine for the app's lifetime, kept running for a grace window
+    // after each dictation and pre-warmed at launch. Cold microphone
+    // spin-up costs 100-300 ms and clips the first syllable when the user
+    // speaks the instant they press the hotkey; a warm engine does not.
     private let engine = AVAudioEngine()
     private let queue = DispatchQueue(label: "riffle.audio.buffer")
     private var samples: [Float] = []
     private var nativeRate: Double = 48000
     private var autoStopFired = false
+    private var graceTimer: Timer?
     private(set) var isRecording = false
 
     var maxSeconds = 240
+    var graceSeconds: TimeInterval = 8
     var levelHandler: ((Float) -> Void)?
     var onAutoStop: (() -> Void)?
 
@@ -34,8 +40,40 @@ final class AudioRecorder {
         }
     }
 
+    // Spins the engine up (or reuses the already-running one) so the mic
+    // route is live before the user's first word.
+    func warmup() {
+        guard !isRecording else { return }
+        try? startEngine()
+        scheduleGraceStop(after: 1.5)
+    }
+
+    private func startEngine() throws {
+        guard !engine.isRunning else { return }
+        engine.prepare()
+        do {
+            try engine.start()
+        } catch {
+            // A stale configuration (device switch) can wedge the engine;
+            // reset once and retry.
+            engine.stop()
+            engine.reset()
+            engine.prepare()
+            try engine.start()
+        }
+    }
+
+    private func scheduleGraceStop(after interval: TimeInterval) {
+        graceTimer?.invalidate()
+        graceTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
+            guard let self, !isRecording else { return }
+            engine.stop()
+        }
+    }
+
     func start() throws {
         guard !isRecording else { return }
+        graceTimer?.invalidate()
         queue.sync { samples.removeAll(keepingCapacity: true) }
         autoStopFired = false
 
@@ -69,8 +107,12 @@ final class AudioRecorder {
             }
         }
 
-        engine.prepare()
-        try engine.start()
+        do {
+            try startEngine()
+        } catch {
+            input.removeTap(onBus: 0)
+            throw error
+        }
         isRecording = true
     }
 
@@ -78,7 +120,7 @@ final class AudioRecorder {
         guard isRecording else { return }
         isRecording = false
         engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
+        scheduleGraceStop(after: graceSeconds)
         queue.sync { samples.removeAll() }
     }
 
@@ -86,7 +128,7 @@ final class AudioRecorder {
         guard isRecording else { return nil }
         isRecording = false
         engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
+        scheduleGraceStop(after: graceSeconds)
 
         var captured: [Float] = []
         queue.sync {

@@ -43,7 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var whisper: WhisperService!
     private var ollama: OllamaClient!
 
-    private var recorder: AudioRecorder?
+    private let audio = AudioRecorder()
     private var currentJob: DictationJob?
     private var handsFree = false
     private var ignoreNextUp = false
@@ -87,10 +87,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         wireHotkey()
         setupStatusItem()
 
+        audio.levelHandler = { [weak self] level in
+            self?.hud.setLevel(level)
+        }
+        audio.onAutoStop = { [weak self] in
+            self?.stopAndProcess()
+        }
         AudioRecorder.requestMicAccess { [weak self] ok in
             guard let self else { return }
             micGranted = ok
             Log.write("microphone permission: \(ok)")
+            if ok { audio.warmup() }
             refreshMenuState()
         }
 
@@ -161,7 +168,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hotkey.key = HotkeyManager.HotKey.parse(config.hotkey)
         hotkey.onDown = { [weak self] shiftHeld in
             guard let self else { return }
-            if recorder != nil {
+            if currentJob != nil {
                 if handsFree {
                     ignoreNextUp = true
                     stopAndProcess()
@@ -177,7 +184,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 ignoreNextUp = false
                 return
             }
-            guard recorder != nil, !handsFree else { return }
+            guard currentJob != nil, !handsFree else { return }
             let duration = Date().timeIntervalSince(pressStart)
             if duration < 0.35 {
                 handsFree = true
@@ -215,16 +222,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
 
-        let r = AudioRecorder()
-        r.maxSeconds = config.maxRecordSeconds
-        r.levelHandler = { [weak self] level in
-            self?.hud.setLevel(level)
-        }
-        r.onAutoStop = { [weak self] in
-            self?.stopAndProcess()
-        }
+        audio.maxSeconds = config.maxRecordSeconds
         do {
-            try r.start()
+            try audio.start()
         } catch {
             Log.write("audio start failed: \(error.localizedDescription)")
             hud.flash("Could not start the microphone", ok: false)
@@ -242,7 +242,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
 
-        recorder = r
         currentJob = job
         handsFree = false
         hotkey.capturing = true
@@ -252,9 +251,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func cancelRecording() {
-        guard let r = recorder, let job = currentJob else { return }
-        r.cancel()
-        recorder = nil
+        guard let job = currentJob else { return }
+        audio.cancel()
         currentJob = nil
         handsFree = false
         hotkey.capturing = false
@@ -264,14 +262,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func stopAndProcess() {
-        guard let r = recorder, let job = currentJob else { return }
-        recorder = nil
+        guard let job = currentJob else { return }
         currentJob = nil
         handsFree = false
         hotkey.capturing = false
         playSound("Tink")
 
-        let recording = r.stop()
+        let recording = audio.stop()
         guard let recording, recording.peak >= 0.006 else {
             if let recording { try? FileManager.default.removeItem(at: recording.url) }
             hud.flash("Nothing heard", ok: false)
@@ -398,7 +395,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         processingCount = max(0, processingCount - 1)
         finishSeq(seq, with: payload)
         updateIcon()
-        if recorder == nil, processingCount > 0 {
+        if currentJob == nil, processingCount > 0 {
             hud.showProcessing()
         }
     }
@@ -433,12 +430,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // Never stomp the Listening HUD of an in-progress recording with a
     // status flash for an earlier dictation.
     private func flashIfIdle(_ message: String, ok: Bool) {
-        guard recorder == nil else { return }
+        guard currentJob == nil else { return }
         hud.flash(message, ok: ok)
     }
 
     private func updateIcon() {
-        if recorder != nil {
+        if currentJob != nil {
             icon(.recording)
         } else if processingCount > 0 {
             icon(.processing)
