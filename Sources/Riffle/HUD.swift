@@ -10,13 +10,13 @@ final class HUD {
     private let label = NSTextField(labelWithString: "")
     private let dot = NSView(frame: NSRect(x: 20, y: 19, width: 10, height: 10))
     private let spinner = NSProgressIndicator(frame: NSRect(x: 17, y: 16, width: 16, height: 16))
-    private let appIconView = NSImageView(frame: NSRect(x: 170, y: 14, width: 20, height: 20))
-    private let bars = LevelBarsView(frame: NSRect(x: 206, y: 13, width: 62, height: 22))
+    private let appIconView = NSImageView(frame: NSRect(x: 140, y: 14, width: 20, height: 20))
+    private let bars = LevelBarsView(frame: NSRect(x: 172, y: 13, width: 62, height: 22))
     private var hideTimer: Timer?
     private var visible = false
 
     init() {
-        let rect = NSRect(x: 0, y: 0, width: 288, height: 48)
+        let rect = NSRect(x: 0, y: 0, width: 252, height: 48)
         panel = NSPanel(contentRect: rect,
                         styleMask: [.borderless, .nonactivatingPanel],
                         backing: .buffered, defer: false)
@@ -124,11 +124,11 @@ final class HUD {
         bars.isHidden = false
         appIconView.image = appIcon
         appIconView.isHidden = (appIcon == nil)
-        label.frame = NSRect(x: 40, y: 15, width: 124, height: 18)
+        label.frame = NSRect(x: 40, y: 15, width: 96, height: 18)
         if edit {
-            label.stringValue = handsFree ? "Editing, tap to stop" : "Editing selection"
+            label.stringValue = handsFree ? "Tap to stop" : "Editing"
         } else {
-            label.stringValue = handsFree ? "Listening, tap to stop" : "Listening"
+            label.stringValue = handsFree ? "Tap to stop" : "Listening"
         }
         if prime { bars.prime() }
         present()
@@ -143,7 +143,7 @@ final class HUD {
         appIconView.isHidden = true
         spinner.isHidden = false
         spinner.startAnimation(nil)
-        label.frame = NSRect(x: 40, y: 15, width: 224, height: 18)
+        label.frame = NSRect(x: 40, y: 15, width: 196, height: 18)
         label.stringValue = "Polishing"
         present()
     }
@@ -157,7 +157,7 @@ final class HUD {
         appIconView.isHidden = true
         dot.isHidden = false
         dot.layer?.backgroundColor = (ok ? NSColor.systemGreen : NSColor.systemOrange).cgColor
-        label.frame = NSRect(x: 40, y: 15, width: 224, height: 18)
+        label.frame = NSRect(x: 40, y: 15, width: 196, height: 18)
         label.stringValue = message
         present()
         hideTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
@@ -186,7 +186,7 @@ final class HUD {
     private func present() {
         guard let screen = NSScreen.main else { return }
         let f = screen.visibleFrame
-        let w: CGFloat = 288
+        let w: CGFloat = 252
         let h: CGFloat = 48
         let x = f.midX - w / 2
         let y = f.minY + 84
