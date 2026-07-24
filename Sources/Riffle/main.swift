@@ -1,5 +1,9 @@
 import AppKit
 
+if let idx = CommandLine.arguments.firstIndex(of: "--hudtest") {
+    let prefix = CommandLine.arguments.count > idx + 1 ? CommandLine.arguments[idx + 1] : nil
+    runHudTest(capturePrefix: prefix)
+}
 if let idx = CommandLine.arguments.firstIndex(of: "--selftest"),
    CommandLine.arguments.count > idx + 1 {
     exit(runSelfTest(wavPath: CommandLine.arguments[idx + 1]))

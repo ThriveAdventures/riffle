@@ -5,6 +5,8 @@ import AppKit
 final class HUD {
 
     private let panel: NSPanel
+    // Exposed for --hudtest self-capture only.
+    var testWindow: NSWindow { panel }
     private let label = NSTextField(labelWithString: "")
     private let dot = NSView(frame: NSRect(x: 20, y: 19, width: 10, height: 10))
     private let spinner = NSProgressIndicator(frame: NSRect(x: 17, y: 16, width: 16, height: 16))
@@ -27,21 +29,37 @@ final class HUD {
         panel.isReleasedWhenClosed = false
         panel.appearance = NSAppearance(named: .vibrantDark)
 
+        let root = NSView(frame: rect)
+
+        // maskImage shapes BOTH the vibrancy material and the window shadow.
+        // Rounding with a plain CALayer mask leaves the window server drawing
+        // material and shadow for the full rectangle, which shows up as faint
+        // light wedges at the corners.
         let effect = NSVisualEffectView(frame: rect)
+        effect.autoresizingMask = [.width, .height]
         effect.material = .hudWindow
         effect.state = .active
         effect.blendingMode = .behindWindow
-        effect.wantsLayer = true
-        effect.layer?.cornerRadius = 24
-        effect.layer?.masksToBounds = true
+        effect.maskImage = Self.roundedMask(radius: 24)
+        root.addSubview(effect)
 
-        // Dark glass: deepen the material and add a hairline light border
-        // plus a faint top sheen.
+        // Chrome overlay: dark tint, top sheen, hairline border. A regular
+        // layer-clipped view rounds these correctly; only the vibrancy
+        // material needs the maskImage treatment above.
+        let chrome = NSView(frame: rect)
+        chrome.autoresizingMask = [.width, .height]
+        chrome.wantsLayer = true
+        chrome.layer?.cornerRadius = 24
+        chrome.layer?.masksToBounds = true
+        chrome.layer?.borderWidth = 1
+        chrome.layer?.borderColor = NSColor.white.withAlphaComponent(0.14).cgColor
+        root.addSubview(chrome)
+
         let darken = NSView(frame: rect)
         darken.autoresizingMask = [.width, .height]
         darken.wantsLayer = true
         darken.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.38).cgColor
-        effect.addSubview(darken)
+        chrome.addSubview(darken)
 
         let sheen = NSView(frame: NSRect(x: 0, y: rect.height - 24, width: rect.width, height: 24))
         sheen.autoresizingMask = [.width, .minYMargin]
@@ -53,10 +71,7 @@ final class HUD {
         sheenLayer.startPoint = CGPoint(x: 0.5, y: 1)
         sheenLayer.endPoint = CGPoint(x: 0.5, y: 0)
         sheen.layer?.addSublayer(sheenLayer)
-        effect.addSubview(sheen)
-
-        effect.layer?.borderWidth = 1
-        effect.layer?.borderColor = NSColor.white.withAlphaComponent(0.14).cgColor
+        chrome.addSubview(sheen)
 
         dot.wantsLayer = true
         dot.layer?.cornerRadius = 5
@@ -72,11 +87,23 @@ final class HUD {
         label.textColor = NSColor.white.withAlphaComponent(0.95)
         label.lineBreakMode = .byTruncatingTail
 
-        effect.addSubview(dot)
-        effect.addSubview(spinner)
-        effect.addSubview(label)
-        effect.addSubview(bars)
-        panel.contentView = effect
+        chrome.addSubview(dot)
+        chrome.addSubview(spinner)
+        chrome.addSubview(label)
+        chrome.addSubview(bars)
+        panel.contentView = root
+    }
+
+    private static func roundedMask(radius: CGFloat) -> NSImage {
+        let edge = radius * 2 + 1
+        let image = NSImage(size: NSSize(width: edge, height: edge), flipped: false) { rect in
+            NSColor.black.setFill()
+            NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+            return true
+        }
+        image.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
+        image.resizingMode = .stretch
+        return image
     }
 
     func showListening(handsFree: Bool, edit: Bool = false) {

@@ -50,6 +50,15 @@ final class AudioRecorder {
 
     private func startEngine() throws {
         guard !engine.isRunning else { return }
+        // Touching inputNode attaches the input side of the graph. Starting
+        // an engine with an empty graph raises an NSException (not a Swift
+        // error), which either aborts the process or gets half-swallowed by
+        // AppKit depending on the calling context.
+        let format = engine.inputNode.outputFormat(forBus: 0)
+        guard format.sampleRate > 0, format.channelCount > 0 else {
+            throw NSError(domain: "Riffle", code: 12,
+                          userInfo: [NSLocalizedDescriptionKey: "no audio input device"])
+        }
         engine.prepare()
         do {
             try engine.start()

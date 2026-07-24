@@ -24,6 +24,39 @@ brew services start ollama || true
 sleep 2
 ollama pull qwen2.5:7b
 
+echo "== Code signing identity"
+if security find-identity -v -p codesigning 2>/dev/null | grep -q "Riffle Local Signing"; then
+  echo "Riffle Local Signing identity already present."
+else
+  echo "Creating a local code-signing certificate so macOS keeps your"
+  echo "Accessibility grant across rebuilds. Approve the dialog if one appears."
+  CERTDIR="$(mktemp -d)"
+  trap 'rm -rf "$CERTDIR"' EXIT
+  openssl req -x509 -newkey rsa:2048 -keyout "$CERTDIR/key.pem" -out "$CERTDIR/cert.pem" \
+    -days 3650 -nodes -subj "/CN=Riffle Local Signing" \
+    -addext "keyUsage=digitalSignature" -addext "extendedKeyUsage=codeSigning" \
+    -addext "basicConstraints=CA:FALSE" >/dev/null 2>&1
+  # OpenSSL 3 defaults to a p12 cipher the macOS keychain rejects; LibreSSL
+  # (stock macOS) has no -legacy flag and needs none.
+  if openssl version | grep -q "^OpenSSL 3"; then
+    openssl pkcs12 -export -legacy -out "$CERTDIR/riffle.p12" -inkey "$CERTDIR/key.pem" \
+      -in "$CERTDIR/cert.pem" -passout pass:rifflelocal >/dev/null 2>&1
+  else
+    openssl pkcs12 -export -out "$CERTDIR/riffle.p12" -inkey "$CERTDIR/key.pem" \
+      -in "$CERTDIR/cert.pem" -passout pass:rifflelocal >/dev/null 2>&1
+  fi
+  security import "$CERTDIR/riffle.p12" -k "$HOME/Library/Keychains/login.keychain-db" \
+    -P rifflelocal -T /usr/bin/codesign >/dev/null 2>&1 || true
+  security add-trusted-cert -p codeSign \
+    -k "$HOME/Library/Keychains/login.keychain-db" "$CERTDIR/cert.pem" || true
+  if security find-identity -v -p codesigning 2>/dev/null | grep -q "Riffle Local Signing"; then
+    echo "Signing identity created. Permissions will survive rebuilds."
+  else
+    echo "Could not create the identity; continuing with ad-hoc signing."
+    echo "Accessibility will need re-granting after each rebuild."
+  fi
+fi
+
 echo "== Build and install"
 scripts/build_app.sh
 

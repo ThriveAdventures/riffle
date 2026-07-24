@@ -60,6 +60,54 @@ func runEditTest(text: String, instruction: String) -> Int32 {
     return code
 }
 
+// Visual check: riffle --hudtest [output-prefix]
+// Cycles the HUD through listening, processing, and flash states with a
+// synthetic level signal. With an output prefix, captures its own window
+// (shadow included) to PNG at each state; own-window capture needs no
+// screen-recording permission.
+import AppKit
+import ImageIO
+import UniformTypeIdentifiers
+
+func runHudTest(capturePrefix: String?) -> Never {
+    let app = NSApplication.shared
+    app.setActivationPolicy(.accessory)
+    let hud = HUD()
+    hud.showListening(handsFree: false)
+    var t: Double = 0
+    Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
+        t += 0.05
+        hud.setLevel(Float(0.15 + 0.65 * abs(sin(t * 2.6))))
+        if let prefix = capturePrefix {
+            if t >= 1.5, t < 1.55 { captureWindow(hud.testWindow, to: "\(prefix)-listening.png") }
+            if t >= 5.0, t < 5.05 { captureWindow(hud.testWindow, to: "\(prefix)-processing.png") }
+            if t >= 7.6, t < 7.65 { captureWindow(hud.testWindow, to: "\(prefix)-flash.png") }
+        }
+        if t >= 4.0, t < 4.05 { hud.showProcessing() }
+        if t >= 7.0, t < 7.05 { hud.flash("Inserted", ok: true) }
+        if t >= 9 { exit(0) }
+    }
+    app.run()
+    exit(0)
+}
+
+private func captureWindow(_ window: NSWindow, to path: String) {
+    let windowID = CGWindowID(window.windowNumber)
+    guard let image = CGWindowListCreateImage(.null, .optionIncludingWindow, windowID,
+                                              [.bestResolution]) else {
+        print("capture failed for \(path)")
+        return
+    }
+    guard let dest = CGImageDestinationCreateWithURL(URL(fileURLWithPath: path) as CFURL,
+                                                     UTType.png.identifier as CFString, 1, nil) else {
+        print("could not create \(path)")
+        return
+    }
+    CGImageDestinationAddImage(dest, image, nil)
+    CGImageDestinationFinalize(dest)
+    print("captured \(path)")
+}
+
 // Headless pipeline check: riffle --selftest <wav file>
 // Exercises the same code paths the app uses: whisper-server supervision,
 // transcription, LLM cleanup, and the output guardrails.

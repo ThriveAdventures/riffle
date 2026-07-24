@@ -164,8 +164,10 @@ files.
 
 macOS ties Accessibility grants to the app's code-signing identity. The
 build script signs with a local certificate named "Riffle Local Signing"
-when one exists in your keychain, so the grant survives rebuilds. Create
-it once per machine (the trust step asks for your password):
+when one exists in your keychain, so the grant survives rebuilds.
+`setup.sh` creates the certificate automatically on first run; you approve
+one trust dialog and never think about it again. The manual equivalent,
+for reference:
 
 ```bash
 openssl req -x509 -newkey rsa:2048 -keyout riffle-key.pem -out riffle-cert.pem \
