@@ -1,0 +1,83 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="tile-gradient" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#141a26"/>
+      <stop offset="1" stop-color="#0a0e17"/>
+    </linearGradient>
+    <radialGradient id="teal-glow-gradient" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#2a7d8c" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#2a7d8c" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="sheen-gradient" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.07"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="shadow-blur" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+    <filter id="glow-blur" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12"/>
+    </filter>
+    <clipPath id="tile-clip">
+      <rect x="100" y="100" width="824" height="824" rx="185"/>
+    </clipPath>
+  </defs>
+
+  <g id="shadow">
+    <rect x="100" y="114" width="824" height="824" rx="185" fill="#000000" opacity="0.35" filter="url(#shadow-blur)"/>
+  </g>
+
+  <g id="tile">
+    <rect id="tile-base" x="100" y="100" width="824" height="824" rx="185" fill="url(#tile-gradient)"/>
+    <g id="tile-lighting" clip-path="url(#tile-clip)">
+      <ellipse id="bottom-teal-glow" cx="512" cy="980" rx="500" ry="300" fill="url(#teal-glow-gradient)"/>
+      <rect id="top-sheen" x="100" y="100" width="824" height="200" fill="url(#sheen-gradient)"/>
+    </g>
+    <rect id="tile-border" x="100" y="100" width="824" height="824" rx="185" fill="none" stroke="rgba(255,255,255,0.10)" stroke-width="2"/>
+  </g>
+
+  <g id="mark">
+    <g id="mark-glow" filter="url(#glow-blur)" opacity="0.45">
+      <circle cx="512" cy="512" r="340" fill="none" stroke="#9fdfef" stroke-width="20"/>
+      <g fill="#9fdfef">
+        <rect x="308" y="482" width="32" height="60" rx="16"/>
+        <rect x="355" y="460" width="32" height="104" rx="16"/>
+        <rect x="402" y="433" width="32" height="158" rx="16"/>
+        <rect x="449" y="403" width="32" height="218" rx="16"/>
+        <rect x="496" y="342" width="32" height="340" rx="16"/>
+        <rect x="543" y="403" width="32" height="218" rx="16"/>
+        <rect x="590" y="433" width="32" height="158" rx="16"/>
+        <rect x="637" y="460" width="32" height="104" rx="16"/>
+        <rect x="684" y="482" width="32" height="60" rx="16"/>
+      </g>
+    </g>
+
+    <circle id="outer-ring" cx="512" cy="512" r="340" fill="none" stroke="#E9F7FF" stroke-width="20" opacity="1"/>
+    <circle id="inner-ring" cx="512" cy="512" r="296" fill="none" stroke="#E9F7FF" stroke-width="8" opacity="0.55"/>
+
+    <g id="crosshair-vertical" stroke="#E9F7FF" stroke-linecap="round" opacity="0.85">
+      <g id="crosshair-lines" stroke-width="11">
+        <line x1="512" y1="290" x2="512" y2="396"/>
+        <line x1="512" y1="628" x2="512" y2="734"/>
+      </g>
+      <g id="range-ticks" stroke-width="9">
+        <line x1="490" y1="330" x2="534" y2="330"/>
+        <line x1="490" y1="366" x2="534" y2="366"/>
+        <line x1="490" y1="658" x2="534" y2="658"/>
+        <line x1="490" y1="694" x2="534" y2="694"/>
+      </g>
+    </g>
+
+    <g id="waveform" fill="#E9F7FF" opacity="0.95">
+      <rect x="308" y="482" width="32" height="60" rx="16"/>
+      <rect x="355" y="460" width="32" height="104" rx="16"/>
+      <rect x="402" y="433" width="32" height="158" rx="16"/>
+      <rect x="449" y="403" width="32" height="218" rx="16"/>
+      <rect x="496" y="342" width="32" height="340" rx="16"/>
+      <rect x="543" y="403" width="32" height="218" rx="16"/>
+      <rect x="590" y="433" width="32" height="158" rx="16"/>
+      <rect x="637" y="460" width="32" height="104" rx="16"/>
+      <rect x="684" y="482" width="32" height="60" rx="16"/>
+    </g>
+  </g>
+</svg>

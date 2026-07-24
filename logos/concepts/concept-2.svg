@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="tile-fill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#141a26"/>
+      <stop offset="1" stop-color="#0a0e17"/>
+    </linearGradient>
+    <radialGradient id="teal-glow-fill" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#2a7d8c" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#2a7d8c" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="sheen-fill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.07"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="tile-clip">
+      <rect x="100" y="100" width="824" height="824" rx="185"/>
+    </clipPath>
+    <filter id="shadow-blur" x="-15%" y="-15%" width="130%" height="130%">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+    <filter id="mark-glow-blur" x="-15%" y="-15%" width="130%" height="130%">
+      <feGaussianBlur stdDeviation="12"/>
+    </filter>
+  </defs>
+
+  <g id="shadow" opacity="0.35" filter="url(#shadow-blur)">
+    <rect x="100" y="114" width="824" height="824" rx="185" fill="#000000"/>
+  </g>
+
+  <g id="tile">
+    <rect id="tile-base" x="100" y="100" width="824" height="824" rx="185" fill="url(#tile-fill)"/>
+    <g id="tile-lighting" clip-path="url(#tile-clip)">
+      <ellipse id="tile-bottom-glow" cx="512" cy="980" rx="500" ry="300" fill="url(#teal-glow-fill)"/>
+      <rect id="tile-top-sheen" x="100" y="100" width="824" height="200" fill="url(#sheen-fill)"/>
+    </g>
+    <rect id="tile-border" x="100" y="100" width="824" height="824" rx="185" fill="none" stroke="#ffffff" stroke-opacity="0.1" stroke-width="2"/>
+  </g>
+
+  <g id="mark">
+    <g id="mark-glow" opacity="0.45" filter="url(#mark-glow-blur)">
+      <circle id="glow-ring" cx="512" cy="512" r="335" fill="none" stroke="#9fdfef" stroke-width="26"/>
+      <g id="glow-waveform" fill="#9fdfef">
+        <rect x="207" y="486" width="30" height="52" rx="15"/>
+        <rect x="255.33" y="473" width="30" height="78" rx="15"/>
+        <rect x="303.67" y="452" width="30" height="120" rx="15"/>
+        <rect x="352" y="427" width="30" height="170" rx="15"/>
+        <rect x="400.33" y="400" width="30" height="224" rx="15"/>
+        <rect x="448.67" y="380" width="30" height="264" rx="15"/>
+        <rect x="497" y="368" width="30" height="288" rx="15"/>
+        <rect x="545.33" y="380" width="30" height="264" rx="15"/>
+        <rect x="593.67" y="400" width="30" height="224" rx="15"/>
+        <rect x="642" y="427" width="30" height="170" rx="15"/>
+        <rect x="690.33" y="452" width="30" height="120" rx="15"/>
+        <rect x="738.67" y="473" width="30" height="78" rx="15"/>
+        <rect x="787" y="486" width="30" height="52" rx="15"/>
+      </g>
+    </g>
+    <circle id="reticle-ring" cx="512" cy="512" r="335" fill="none" stroke="#E9F7FF" stroke-width="26" opacity="1"/>
+    <g id="waveform" fill="#E9F7FF" opacity="0.95">
+      <rect x="207" y="486" width="30" height="52" rx="15"/>
+      <rect x="255.33" y="473" width="30" height="78" rx="15"/>
+      <rect x="303.67" y="452" width="30" height="120" rx="15"/>
+      <rect x="352" y="427" width="30" height="170" rx="15"/>
+      <rect x="400.33" y="400" width="30" height="224" rx="15"/>
+      <rect x="448.67" y="380" width="30" height="264" rx="15"/>
+      <rect x="497" y="368" width="30" height="288" rx="15"/>
+      <rect x="545.33" y="380" width="30" height="264" rx="15"/>
+      <rect x="593.67" y="400" width="30" height="224" rx="15"/>
+      <rect x="642" y="427" width="30" height="170" rx="15"/>
+      <rect x="690.33" y="452" width="30" height="120" rx="15"/>
+      <rect x="738.67" y="473" width="30" height="78" rx="15"/>
+      <rect x="787" y="486" width="30" height="52" rx="15"/>
+    </g>
+    <g id="ring-ticks" stroke="#E9F7FF" stroke-width="11" stroke-linecap="round" opacity="0.8">
+      <line x1="512" y1="204" x2="512" y2="238"/>
+      <line x1="666" y1="245.26" x2="649" y2="274.71"/>
+      <line x1="778.74" y1="358" x2="749.29" y2="375"/>
+      <line x1="778.74" y1="666" x2="749.29" y2="649"/>
+      <line x1="666" y1="778.74" x2="649" y2="749.29"/>
+      <line x1="512" y1="820" x2="512" y2="786"/>
+      <line x1="358" y1="778.74" x2="375" y2="749.29"/>
+      <line x1="245.26" y1="666" x2="274.71" y2="649"/>
+      <line x1="245.26" y1="358" x2="274.71" y2="375"/>
+      <line x1="358" y1="245.26" x2="375" y2="274.71"/>
+    </g>
+  </g>
+</svg>
