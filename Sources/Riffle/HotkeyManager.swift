@@ -98,9 +98,19 @@ final class HotkeyManager {
         let flags = event.flags
         let keycode = event.getIntegerValueField(.keyboardEventKeycode)
         var down = isDown
+        var consumeTransition = false
         switch key {
         case .fn:
             down = flags.contains(.maskSecondaryFn)
+            // fn is Riffle's push-to-talk key, so its press and release are
+            // consumed outright. Apps never see the transition, which also
+            // stops macOS's per-app fn handling (emoji palette, input
+            // switching) from firing on taps, even in apps that cached an
+            // old "Press fn key to" setting. fn-plus-key combos are
+            // unaffected: those carry the fn flag inside their own keyDown
+            // events. Never done for the right-modifier hotkeys, which
+            // other shortcuts legitimately depend on.
+            consumeTransition = true
         case .rightCommand:
             if keycode == 54 { down = flags.contains(.maskCommand) }
         case .rightOption:
@@ -115,6 +125,9 @@ final class HotkeyManager {
             } else {
                 let callback = onUp
                 DispatchQueue.main.async { callback?() }
+            }
+            if consumeTransition {
+                return nil
             }
         }
         return Unmanaged.passUnretained(event)
