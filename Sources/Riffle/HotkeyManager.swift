@@ -29,9 +29,13 @@ final class HotkeyManager {
     }
 
     var key: HotKey = .fn
+    // Callbacks carry the event-arrival time. Hold duration must be
+    // measured between hardware events, never on the main thread, where a
+    // slow synchronous start (cold mic spin-up) would inflate a quick tap
+    // into a "hold" and stop the recording immediately.
     // The Bool is true when shift was held at press time (edit mode).
-    var onDown: ((Bool) -> Void)?
-    var onUp: (() -> Void)?
+    var onDown: ((Bool, Date) -> Void)?
+    var onUp: ((Date) -> Void)?
     var onCancel: (() -> Void)?
 
     // Set from the main thread while recording so the tap thread knows
@@ -118,13 +122,14 @@ final class HotkeyManager {
         }
         if down != isDown {
             isDown = down
+            let at = Date()
             if down {
                 let shiftHeld = flags.contains(.maskShift)
                 let callback = onDown
-                DispatchQueue.main.async { callback?(shiftHeld) }
+                DispatchQueue.main.async { callback?(shiftHeld, at) }
             } else {
                 let callback = onUp
-                DispatchQueue.main.async { callback?() }
+                DispatchQueue.main.async { callback?(at) }
             }
             if consumeTransition {
                 return nil

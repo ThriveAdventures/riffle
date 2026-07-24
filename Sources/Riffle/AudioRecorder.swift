@@ -27,6 +27,26 @@ final class AudioRecorder {
     var levelHandler: ((Float) -> Void)?
     var onAutoStop: (() -> Void)?
 
+    init() {
+        // A kept-warm engine does not follow the system default input when
+        // the device changes (headphones connecting, for example); it keeps
+        // capturing a dead route, which records silence. The engine posts a
+        // configuration-change notification for exactly this; tear it down
+        // when idle so the next start rebinds to the current device.
+        NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: engine, queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            Log.write("audio: engine configuration changed (input device switch)")
+            if !isRecording {
+                graceTimer?.invalidate()
+                engine.stop()
+                engine.reset()
+            }
+        }
+    }
+
     static func requestMicAccess(completion: @escaping (Bool) -> Void) {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized:

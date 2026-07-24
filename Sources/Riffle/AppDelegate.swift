@@ -168,7 +168,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func wireHotkey() {
         hotkey.key = HotkeyManager.HotKey.parse(config.hotkey)
-        hotkey.onDown = { [weak self] shiftHeld in
+        hotkey.onDown = { [weak self] shiftHeld, at in
             guard let self else { return }
             if currentJob != nil {
                 if handsFree {
@@ -177,17 +177,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 }
                 return
             }
-            pressStart = Date()
+            pressStart = at
             startRecording(editMode: shiftHeld)
         }
-        hotkey.onUp = { [weak self] in
+        hotkey.onUp = { [weak self] at in
             guard let self else { return }
             if ignoreNextUp {
                 ignoreNextUp = false
                 return
             }
             guard currentJob != nil, !handsFree else { return }
-            let duration = Date().timeIntervalSince(pressStart)
+            let duration = at.timeIntervalSince(pressStart)
             if duration < 0.35 {
                 handsFree = true
                 hud.showListening(handsFree: true, edit: currentJob?.editMode ?? false,
@@ -275,7 +275,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let recording = audio.stop()
         guard let recording, recording.peak >= 0.006 else {
-            if let recording { try? FileManager.default.removeItem(at: recording.url) }
+            if let recording {
+                Log.write("nothing heard: \(String(format: "%.2f", recording.seconds))s audio, peak \(String(format: "%.4f", recording.peak)) (silent input?)")
+                try? FileManager.default.removeItem(at: recording.url)
+            } else {
+                Log.write("nothing heard: recording under minimum duration")
+            }
             hud.flash("Nothing heard", ok: false)
             finishSeq(job.seq, with: nil)
             updateIcon()
