@@ -87,6 +87,7 @@ final class HUD {
         label.textColor = NSColor.white.withAlphaComponent(0.95)
         label.lineBreakMode = .byTruncatingTail
 
+        bars.autoresizingMask = [.minXMargin]  // pin to the right edge during the entrance stretch
         chrome.addSubview(dot)
         chrome.addSubview(spinner)
         chrome.addSubview(label)
@@ -171,24 +172,37 @@ final class HUD {
     private func present() {
         guard let screen = NSScreen.main else { return }
         let f = screen.visibleFrame
-        let x = f.midX - panel.frame.width / 2
+        let w: CGFloat = 288
+        let h: CGFloat = 48
+        let x = f.midX - w / 2
         let y = f.minY + 84
+        let target = NSRect(x: x, y: y, width: w, height: h)
         if visible {
-            panel.setFrameOrigin(NSPoint(x: x, y: y))
+            panel.setFrame(target, display: true)
             panel.alphaValue = 1
             return
         }
         visible = true
-        panel.setFrameOrigin(NSPoint(x: x, y: y - 8))
+
+        // Entrance: rise and stretch open with a small overshoot, then settle.
+        let small = NSRect(x: x + w * 0.06, y: y - 8, width: w * 0.88, height: h)
+        let over = NSRect(x: x - w * 0.012, y: y, width: w * 1.024, height: h)
+        panel.setFrame(small, display: false)
         panel.alphaValue = 0
         panel.orderFrontRegardless()
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.22
+        NSAnimationContext.runAnimationGroup({ [weak self] ctx in
+            ctx.duration = 0.16
             ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            panel.animator().alphaValue = 1
-            panel.animator().setFrame(NSRect(x: x, y: y, width: panel.frame.width,
-                                             height: panel.frame.height), display: true)
-        }
+            self?.panel.animator().alphaValue = 1
+            self?.panel.animator().setFrame(over, display: true)
+        }, completionHandler: { [weak self] in
+            guard let self, visible else { return }
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.12
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                self.panel.animator().setFrame(target, display: true)
+            }
+        })
     }
 
     private func startPulse() {
