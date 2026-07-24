@@ -74,8 +74,12 @@ Two one-time checks:
 
 - Quit any other dictation app (Wispr Flow and similar), they fight for the
   same hotkey
-- System Settings > Keyboard > "Press fn key to" should be set to
-  "Do Nothing" so tapping fn does not open the emoji picker
+- macOS must not grab bare fn taps, or quick-tap hands-free mode opens
+  the emoji picker and steals your paste. Either set System Settings >
+  Keyboard > "Press fn key to" to "Do Nothing", or run:
+  `defaults write com.apple.HIToolbox AppleFnUsageType -int 0`
+  (already-running apps pick it up after a relaunch; revert with
+  `defaults delete com.apple.HIToolbox AppleFnUsageType`)
 
 ## Using it
 
