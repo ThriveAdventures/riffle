@@ -6,27 +6,36 @@ import CoreGraphics
 // clipboard contents. Type mode synthesizes keystrokes instead.
 enum TextInserter {
 
-    static func insert(text: String, mode: String, restoreClipboard: Bool) {
+    typealias ClipboardSnapshot = [[NSPasteboard.PasteboardType: Data]]
+
+    static func snapshotClipboard() -> ClipboardSnapshot {
+        let pb = NSPasteboard.general
+        var saved: ClipboardSnapshot = []
+        for item in pb.pasteboardItems ?? [] {
+            var copy: [NSPasteboard.PasteboardType: Data] = [:]
+            for type in item.types {
+                if let data = item.data(forType: type) { copy[type] = data }
+            }
+            if !copy.isEmpty { saved.append(copy) }
+        }
+        return saved
+    }
+
+    // presaved: a clipboard snapshot taken earlier (edit mode copies the
+    // selection first, so the snapshot from before that copy is the one to
+    // restore).
+    static func insert(text: String, mode: String, restoreClipboard: Bool,
+                       presaved: ClipboardSnapshot? = nil) {
         if mode == "type" {
             typeText(text)
         } else {
-            paste(text: text, restore: restoreClipboard)
+            paste(text: text, restore: restoreClipboard, presaved: presaved)
         }
     }
 
-    private static func paste(text: String, restore: Bool) {
+    private static func paste(text: String, restore: Bool, presaved: ClipboardSnapshot?) {
         let pb = NSPasteboard.general
-
-        var savedItems: [[NSPasteboard.PasteboardType: Data]] = []
-        if restore, let items = pb.pasteboardItems {
-            for item in items {
-                var copy: [NSPasteboard.PasteboardType: Data] = [:]
-                for type in item.types {
-                    if let data = item.data(forType: type) { copy[type] = data }
-                }
-                if !copy.isEmpty { savedItems.append(copy) }
-            }
-        }
+        let savedItems: ClipboardSnapshot = presaved ?? (restore ? snapshotClipboard() : [])
 
         pb.clearContents()
         pb.setString(text, forType: .string)
@@ -49,10 +58,13 @@ enum TextInserter {
     }
 
     private static func sendCmdV() {
+        sendCmdKey(9)  // kVK_ANSI_V
+    }
+
+    static func sendCmdKey(_ keyCode: CGKeyCode) {
         guard let src = CGEventSource(stateID: .combinedSessionState) else { return }
-        let vKey: CGKeyCode = 9
-        guard let down = CGEvent(keyboardEventSource: src, virtualKey: vKey, keyDown: true),
-              let up = CGEvent(keyboardEventSource: src, virtualKey: vKey, keyDown: false)
+        guard let down = CGEvent(keyboardEventSource: src, virtualKey: keyCode, keyDown: true),
+              let up = CGEvent(keyboardEventSource: src, virtualKey: keyCode, keyDown: false)
         else { return }
         down.flags = .maskCommand
         up.flags = .maskCommand
@@ -85,5 +97,26 @@ enum TextInserter {
             idx = end
         }
         return result
+    }
+}
+
+// Reads the current selection by simulating cmd-c and watching the
+// clipboard. Returns the selected text (nil if nothing was selected) plus a
+// snapshot of the clipboard from before the copy, for later restoration.
+enum SelectionGrabber {
+    static func grab(completion: @escaping (String?, TextInserter.ClipboardSnapshot) -> Void) {
+        let pb = NSPasteboard.general
+        let saved = TextInserter.snapshotClipboard()
+        let before = pb.changeCount
+        TextInserter.sendCmdKey(8)  // kVK_ANSI_C
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+            if pb.changeCount != before,
+               let s = pb.string(forType: .string),
+               !s.isEmpty {
+                completion(s, saved)
+            } else {
+                completion(nil, saved)
+            }
+        }
     }
 }

@@ -1,6 +1,14 @@
 import Foundation
 
 struct RiffleConfig: Codable {
+
+    // Deterministic find-and-replace applied after the LLM pass.
+    // Case-insensitive, whole-word. Guarantees spellings the LLM might miss.
+    struct Replacement: Codable, Equatable {
+        var find = ""
+        var replace = ""
+    }
+
     var hotkey = "fn"                       // fn | right_command | right_option
     var language = "en"                     // whisper language code, or "auto"
     var cleanupEnabled = true
@@ -19,6 +27,7 @@ struct RiffleConfig: Codable {
     var dictionary: [String] = [
         "Kubernetes", "PostgreSQL", "Ollama", "SKU",
     ]
+    var replacements: [Replacement] = []
 
     enum CodingKeys: String, CodingKey {
         case hotkey
@@ -36,6 +45,7 @@ struct RiffleConfig: Codable {
         case historyEnabled = "history_enabled"
         case maxRecordSeconds = "max_record_seconds"
         case dictionary
+        case replacements
     }
 
     init() {}
@@ -61,10 +71,17 @@ struct RiffleConfig: Codable {
         historyEnabled = dec(.historyEnabled, d.historyEnabled)
         maxRecordSeconds = dec(.maxRecordSeconds, d.maxRecordSeconds)
         dictionary = dec(.dictionary, d.dictionary)
+        replacements = dec(.replacements, d.replacements)
     }
 
     static var dir: URL {
-        FileManager.default.homeDirectoryForCurrentUser
+        // Overridable so the CLI test modes can run against a scratch config.
+        if let override = ProcessInfo.processInfo.environment["RIFFLE_CONFIG_DIR"],
+           !override.isEmpty {
+            return URL(fileURLWithPath: (override as NSString).expandingTildeInPath,
+                       isDirectory: true)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/Riffle")
     }
     static var fileURL: URL { dir.appendingPathComponent("config.json") }

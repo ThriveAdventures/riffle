@@ -29,7 +29,8 @@ final class HotkeyManager {
     }
 
     var key: HotKey = .fn
-    var onDown: (() -> Void)?
+    // The Bool is true when shift was held at press time (edit mode).
+    var onDown: ((Bool) -> Void)?
     var onUp: (() -> Void)?
     var onCancel: (() -> Void)?
 
@@ -107,8 +108,14 @@ final class HotkeyManager {
         }
         if down != isDown {
             isDown = down
-            let callback = down ? onDown : onUp
-            DispatchQueue.main.async { callback?() }
+            if down {
+                let shiftHeld = flags.contains(.maskShift)
+                let callback = onDown
+                DispatchQueue.main.async { callback?(shiftHeld) }
+            } else {
+                let callback = onUp
+                DispatchQueue.main.async { callback?() }
+            }
         }
         return Unmanaged.passUnretained(event)
     }

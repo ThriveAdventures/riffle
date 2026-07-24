@@ -22,6 +22,8 @@ the transcript through a small local LLM that:
 - Writes numbers, times, emails, and URLs the way you would type them
   ("john at acme dot com" becomes "john@acme.com")
 - Spells your names and jargon correctly via a custom dictionary
+- Enforces exact spellings with deterministic word replacements applied
+  after the LLM (brand casing, expansions like "btw" to "by the way")
 - Adapts tone to the target app: chat apps get conversational text, email
   gets full sentences, terminals keep technical terms verbatim
 
@@ -80,9 +82,21 @@ Two one-time checks:
 - Hold `fn`, speak, release: text lands at your cursor
 - Quick-tap `fn`: hands-free mode, tap again to stop
 - `esc` while recording: cancel
+- You can start the next dictation while the previous one is still
+  processing; results insert in the order you spoke them
 - Menu bar icon shows state: waveform (idle), red dot (recording),
   hourglass (processing)
 - A small HUD near the bottom of the screen shows live input level and status
+
+### Edit mode
+
+Select text anywhere, hold `shift+fn`, and speak an instruction:
+
+> "make this shorter" &nbsp; "turn this into bullets" &nbsp; "translate to French" &nbsp; "make it more formal"
+
+The selection is replaced with the edited text. If the edit fails or nothing
+is selected, your text is left untouched. Edit mode requires the local LLM
+(it never falls back to pasting the raw instruction over your selection).
 
 ## Configuration
 
@@ -96,6 +110,7 @@ Config lives at `~/Library/Application Support/Riffle/config.json`
 | `cleanup_enabled` | `true` | LLM pass on or off (also in the menu) |
 | `llm_model` | `qwen2.5:7b` | any Ollama model tag |
 | `dictionary` | examples | your names and jargon, spelled correctly |
+| `replacements` | `[]` | forced find-and-replace after the LLM, e.g. `{"find": "btw", "replace": "by the way"}` (case-insensitive, whole-word) |
 | `insert_mode` | `paste` | `paste` (cmd-v) or `type` (synthetic keystrokes) |
 | `trailing_space` | `true` | append a space so you can keep dictating |
 | `restore_clipboard` | `true` | put the old clipboard back after pasting |

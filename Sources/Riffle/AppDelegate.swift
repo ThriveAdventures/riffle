@@ -5,22 +5,54 @@ import ServiceManagement
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
-    private enum RunState { case idle, recording, processing }
     private enum IconState { case idle, recording, processing }
+
+    // One dictation from hotkey press to inserted text. Jobs are numbered so
+    // results insert in the order they were spoken, even when a new
+    // recording starts while earlier ones are still processing.
+    private final class DictationJob {
+        let seq: Int
+        let app: String?
+        let editMode: Bool
+        var selection: String?
+        var presavedClipboard: TextInserter.ClipboardSnapshot?
+
+        init(seq: Int, app: String?, editMode: Bool) {
+            self.seq = seq
+            self.app = app
+            self.editMode = editMode
+        }
+    }
+
+    private struct InsertPayload {
+        let text: String
+        let raw: String
+        let editMode: Bool
+        let usedLLM: Bool
+        let seconds: Double
+        let transcribeMs: Int
+        let cleanupMs: Int
+        let app: String?
+        let presavedClipboard: TextInserter.ClipboardSnapshot?
+    }
 
     private var statusItem: NSStatusItem!
     private let hotkey = HotkeyManager()
-    private var recorder: AudioRecorder?
     private let hud = HUD()
     private var config = RiffleConfig.load()
     private var whisper: WhisperService!
     private var ollama: OllamaClient!
 
-    private var state: RunState = .idle
+    private var recorder: AudioRecorder?
+    private var currentJob: DictationJob?
     private var handsFree = false
     private var ignoreNextUp = false
     private var pressStart = Date.distantPast
-    private var targetApp: String?
+
+    private var seqCounter = 0
+    private var nextInsertSeq = 0
+    private var completed: [Int: InsertPayload?] = [:]
+    private var processingCount = 0
 
     private var micGranted = false
     private var axGranted = false
@@ -127,21 +159,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func wireHotkey() {
         hotkey.key = HotkeyManager.HotKey.parse(config.hotkey)
-        hotkey.onDown = { [weak self] in
+        hotkey.onDown = { [weak self] shiftHeld in
             guard let self else { return }
-            switch state {
-            case .recording:
+            if recorder != nil {
                 if handsFree {
                     ignoreNextUp = true
                     stopAndProcess()
                 }
-            case .processing:
-                ignoreNextUp = true
-                hud.flash("Still finishing the last one", ok: false)
-            case .idle:
-                pressStart = Date()
-                startRecording()
+                return
             }
+            pressStart = Date()
+            startRecording(editMode: shiftHeld)
         }
         hotkey.onUp = { [weak self] in
             guard let self else { return }
@@ -149,11 +177,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 ignoreNextUp = false
                 return
             }
-            guard state == .recording, !handsFree else { return }
+            guard recorder != nil, !handsFree else { return }
             let duration = Date().timeIntervalSince(pressStart)
             if duration < 0.35 {
                 handsFree = true
-                hud.showListening(handsFree: true)
+                hud.showListening(handsFree: true, edit: currentJob?.editMode ?? false)
             } else {
                 stopAndProcess()
             }
@@ -163,19 +191,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    private func setState(_ s: RunState) {
-        state = s
-        hotkey.capturing = (s == .recording)
-        switch s {
-        case .idle: icon(.idle)
-        case .recording: icon(.recording)
-        case .processing: icon(.processing)
-        }
-    }
-
     // MARK: - Recording flow
 
-    private func startRecording() {
+    private func startRecording(editMode: Bool) {
         guard micGranted else {
             hud.flash("Grant Microphone access in System Settings", ok: false)
             AudioRecorder.requestMicAccess { [weak self] ok in
@@ -188,8 +206,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             hud.flash("Whisper model missing, see menu", ok: false)
             return
         }
+        if editMode {
+            // Edit mode pastes over the user's selection, so a raw-transcript
+            // fallback would destroy their text. Refuse instead.
+            guard config.cleanupEnabled, ollamaUp, ollamaHasModel else {
+                hud.flash("Edit mode needs AI cleanup available", ok: false)
+                return
+            }
+        }
 
-        targetApp = NSWorkspace.shared.frontmostApplication?.localizedName
         let r = AudioRecorder()
         r.maxSeconds = config.maxRecordSeconds
         r.levelHandler = { [weak self] level in
@@ -200,52 +225,68 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         do {
             try r.start()
-            recorder = r
-            handsFree = false
-            setState(.recording)
-            playSound("Pop")
-            hud.showListening(handsFree: false)
         } catch {
             Log.write("audio start failed: \(error.localizedDescription)")
             hud.flash("Could not start the microphone", ok: false)
+            return
         }
+
+        let job = DictationJob(seq: seqCounter,
+                               app: NSWorkspace.shared.frontmostApplication?.localizedName,
+                               editMode: editMode)
+        seqCounter += 1
+        if editMode {
+            SelectionGrabber.grab { text, saved in
+                job.selection = text
+                job.presavedClipboard = saved
+            }
+        }
+
+        recorder = r
+        currentJob = job
+        handsFree = false
+        hotkey.capturing = true
+        updateIcon()
+        playSound("Pop")
+        hud.showListening(handsFree: false, edit: editMode)
     }
 
     private func cancelRecording() {
-        guard state == .recording, let r = recorder else { return }
+        guard let r = recorder, let job = currentJob else { return }
         r.cancel()
         recorder = nil
+        currentJob = nil
         handsFree = false
-        setState(.idle)
+        hotkey.capturing = false
+        finishSeq(job.seq, with: nil)
+        updateIcon()
         hud.flash("Canceled", ok: false)
     }
 
     private func stopAndProcess() {
-        guard state == .recording, let r = recorder else { return }
-        setState(.processing)
-        playSound("Tink")
-        let recording = r.stop()
+        guard let r = recorder, let job = currentJob else { return }
         recorder = nil
+        currentJob = nil
         handsFree = false
+        hotkey.capturing = false
+        playSound("Tink")
 
-        guard let recording else {
+        let recording = r.stop()
+        guard let recording, recording.peak >= 0.006 else {
+            if let recording { try? FileManager.default.removeItem(at: recording.url) }
             hud.flash("Nothing heard", ok: false)
-            setState(.idle)
+            finishSeq(job.seq, with: nil)
+            updateIcon()
             return
         }
-        if recording.peak < 0.006 {
-            try? FileManager.default.removeItem(at: recording.url)
-            hud.flash("Nothing heard", ok: false)
-            setState(.idle)
-            return
-        }
 
+        processingCount += 1
+        updateIcon()
         hud.showProcessing()
-        let app = targetApp
-        Task { await self.process(recording, app: app) }
+        Task { await self.process(recording, job: job) }
     }
 
-    private func process(_ recording: AudioRecorder.Recording, app: String?) async {
+    private func process(_ recording: AudioRecorder.Recording, job: DictationJob) async {
         let t0 = Date()
         var raw: String
         do {
@@ -254,9 +295,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             Log.write("transcribe failed: \(error.localizedDescription)")
             try? FileManager.default.removeItem(at: recording.url)
             await MainActor.run {
-                hud.flash("Transcription failed, check the log", ok: false)
-                setState(.idle)
+                flashIfIdle("Transcription failed, check the log", ok: false)
                 whisper.startIfNeeded()
+                finishProcessing(job.seq, with: nil)
                 refreshHealth()
             }
             return
@@ -267,19 +308,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         raw = TextCleanup.sanitizeWhisper(raw)
         guard !raw.isEmpty else {
             await MainActor.run {
-                hud.flash("Nothing heard", ok: false)
-                setState(.idle)
+                flashIfIdle("Nothing heard", ok: false)
+                finishProcessing(job.seq, with: nil)
             }
             return
         }
 
+        if job.editMode {
+            await processEdit(raw: raw, job: job, seconds: recording.seconds,
+                              transcribeMs: transcribeMs)
+        } else {
+            await processDictation(raw: raw, job: job, seconds: recording.seconds,
+                                   transcribeMs: transcribeMs)
+        }
+    }
+
+    private func processDictation(raw: String, job: DictationJob,
+                                  seconds: Double, transcribeMs: Int) async {
         var finalText = TextCleanup.basicTidy(raw)
         var usedLLM = false
         var cleanupMs = 0
         if config.cleanupEnabled, ollamaUp, ollamaHasModel {
             let t1 = Date()
             do {
-                let cleaned = try await ollama.cleanup(transcript: raw, appName: app,
+                let cleaned = try await ollama.cleanup(transcript: raw, appName: job.app,
                                                        dictionary: config.dictionary)
                 let result = TextCleanup.guardrail(raw: finalText, cleaned: cleaned)
                 finalText = result.0
@@ -290,24 +342,108 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             cleanupMs = Int(Date().timeIntervalSince(t1) * 1000)
         }
 
+        finalText = TextCleanup.applyReplacements(finalText, rules: config.replacements)
         if config.trailingSpace, !finalText.hasSuffix("\n") {
             finalText += " "
         }
 
-        let out = finalText
-        let rawFinal = raw
-        let stats = (transcribeMs, cleanupMs, usedLLM)
-        await MainActor.run {
-            TextInserter.insert(text: out, mode: config.insertMode,
-                                restoreClipboard: config.restoreClipboard)
-            if config.historyEnabled {
-                History.append(raw: rawFinal, cleaned: out, app: app,
-                               seconds: recording.seconds,
-                               transcribeMs: stats.0, cleanupMs: stats.1)
+        let payload = InsertPayload(text: finalText, raw: raw, editMode: false,
+                                    usedLLM: usedLLM, seconds: seconds,
+                                    transcribeMs: transcribeMs, cleanupMs: cleanupMs,
+                                    app: job.app, presavedClipboard: nil)
+        await MainActor.run { finishProcessing(job.seq, with: payload) }
+    }
+
+    private func processEdit(raw: String, job: DictationJob,
+                             seconds: Double, transcribeMs: Int) async {
+        guard let selection = job.selection, !selection.isEmpty else {
+            await MainActor.run {
+                flashIfIdle("No text selected", ok: false)
+                finishProcessing(job.seq, with: nil)
             }
-            Log.write("dictation: \(String(format: "%.1f", recording.seconds))s audio, whisper \(stats.0)ms, cleanup \(stats.1)ms, llm=\(stats.2)")
-            hud.flash(stats.2 ? "Inserted" : "Inserted raw transcript", ok: true)
-            setState(.idle)
+            return
+        }
+
+        let t1 = Date()
+        var edited: String?
+        do {
+            let out = try await ollama.edit(text: selection, instruction: raw,
+                                            dictionary: config.dictionary)
+            edited = TextCleanup.guardrailEdit(output: out)
+        } catch {
+            Log.write("edit failed: \(error.localizedDescription)")
+        }
+        let cleanupMs = Int(Date().timeIntervalSince(t1) * 1000)
+
+        guard var result = edited else {
+            await MainActor.run {
+                flashIfIdle("Edit failed, selection untouched", ok: false)
+                finishProcessing(job.seq, with: nil)
+            }
+            return
+        }
+        result = TextCleanup.applyReplacements(result, rules: config.replacements)
+
+        let payload = InsertPayload(text: result, raw: raw, editMode: true,
+                                    usedLLM: true, seconds: seconds,
+                                    transcribeMs: transcribeMs, cleanupMs: cleanupMs,
+                                    app: job.app,
+                                    presavedClipboard: job.presavedClipboard)
+        await MainActor.run { finishProcessing(job.seq, with: payload) }
+    }
+
+    // MARK: - Ordered insertion queue
+
+    private func finishProcessing(_ seq: Int, with payload: InsertPayload?) {
+        processingCount = max(0, processingCount - 1)
+        finishSeq(seq, with: payload)
+        updateIcon()
+        if recorder == nil, processingCount > 0 {
+            hud.showProcessing()
+        }
+    }
+
+    private func finishSeq(_ seq: Int, with payload: InsertPayload?) {
+        completed[seq] = payload
+        drainQueue()
+    }
+
+    private func drainQueue() {
+        while let entry = completed[nextInsertSeq] {
+            completed.removeValue(forKey: nextInsertSeq)
+            nextInsertSeq += 1
+            guard let p = entry else { continue }
+            TextInserter.insert(text: p.text, mode: config.insertMode,
+                                restoreClipboard: config.restoreClipboard,
+                                presaved: config.restoreClipboard ? p.presavedClipboard : nil)
+            if config.historyEnabled {
+                History.append(raw: p.raw, cleaned: p.text, app: p.app,
+                               seconds: p.seconds, transcribeMs: p.transcribeMs,
+                               cleanupMs: p.cleanupMs, edit: p.editMode)
+            }
+            Log.write("\(p.editMode ? "edit" : "dictation"): \(String(format: "%.1f", p.seconds))s audio, whisper \(p.transcribeMs)ms, cleanup \(p.cleanupMs)ms, llm=\(p.usedLLM)")
+            if p.editMode {
+                flashIfIdle("Edited", ok: true)
+            } else {
+                flashIfIdle(p.usedLLM ? "Inserted" : "Inserted raw transcript", ok: true)
+            }
+        }
+    }
+
+    // Never stomp the Listening HUD of an in-progress recording with a
+    // status flash for an earlier dictation.
+    private func flashIfIdle(_ message: String, ok: Bool) {
+        guard recorder == nil else { return }
+        hud.flash(message, ok: ok)
+    }
+
+    private func updateIcon() {
+        if recorder != nil {
+            icon(.recording)
+        } else if processingCount > 0 {
+            icon(.processing)
+        } else {
+            icon(.idle)
         }
     }
 
@@ -445,7 +581,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func refreshMenuState() {
         let keyName = hotkey.key.displayName
-        hintItem.title = "Hold \(keyName) to dictate, quick-tap for hands-free, esc cancels"
+        hintItem.title = "Hold \(keyName) to dictate, shift+\(keyName) edits selected text"
 
         if !whisper.modelExists {
             whisperLine.title = "Whisper: model missing (run setup.sh)"

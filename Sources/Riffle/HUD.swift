@@ -55,15 +55,19 @@ final class HUD {
         panel.contentView = effect
     }
 
-    func showListening(handsFree: Bool) {
+    func showListening(handsFree: Bool, edit: Bool = false) {
         hideTimer?.invalidate()
         hideTimer = nil
         spinner.stopAnimation(nil)
         spinner.isHidden = true
         dot.isHidden = false
-        dot.layer?.backgroundColor = NSColor.systemRed.cgColor
+        dot.layer?.backgroundColor = (edit ? NSColor.systemPurple : NSColor.systemRed).cgColor
         bars.isHidden = false
-        label.stringValue = handsFree ? "Listening, tap to stop" : "Listening"
+        if edit {
+            label.stringValue = handsFree ? "Editing, tap to stop" : "Editing selection"
+        } else {
+            label.stringValue = handsFree ? "Listening, tap to stop" : "Listening"
+        }
         present()
     }
 

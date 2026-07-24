@@ -5,7 +5,8 @@ enum History {
     static var url: URL { RiffleConfig.dir.appendingPathComponent("history.jsonl") }
 
     static func append(raw: String, cleaned: String, app: String?,
-                       seconds: Double, transcribeMs: Int, cleanupMs: Int) {
+                       seconds: Double, transcribeMs: Int, cleanupMs: Int,
+                       edit: Bool = false) {
         let entry: [String: Any] = [
             "ts": ISO8601DateFormatter().string(from: Date()),
             "app": app ?? "",
@@ -14,6 +15,7 @@ enum History {
             "text": cleaned,
             "whisper_ms": transcribeMs,
             "cleanup_ms": cleanupMs,
+            "edit": edit,
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: entry) else { return }
         var line = data
