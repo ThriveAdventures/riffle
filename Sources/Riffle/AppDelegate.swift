@@ -690,21 +690,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - Status icon and sounds
 
-    private func icon(_ s: IconState) {
-        let name: String
-        var tint: NSColor?
-        switch s {
-        case .idle:
-            name = "waveform"
-        case .recording:
-            name = "record.circle.fill"
-            tint = .systemRed
-        case .processing:
-            name = "hourglass"
+    // The brand mark drawn as a template image: scope ring, four posts, five
+    // bars. Drawn in code so it stays crisp at any backing scale and adapts
+    // to menu bar appearance. State is carried by tint.
+    private static let menuBarMark: NSImage = {
+        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { _ in
+            NSColor.black.set()
+            let ring = NSBezierPath(ovalIn: NSRect(x: 2, y: 2, width: 14, height: 14))
+            ring.lineWidth = 1.2
+            ring.stroke()
+            let posts = [
+                NSRect(x: 8.4, y: 14.2, width: 1.2, height: 1.3),
+                NSRect(x: 8.4, y: 2.5, width: 1.2, height: 1.3),
+                NSRect(x: 2.5, y: 8.4, width: 1.3, height: 1.2),
+                NSRect(x: 14.2, y: 8.4, width: 1.3, height: 1.2),
+            ]
+            for rect in posts {
+                NSBezierPath(roundedRect: rect, xRadius: 0.4, yRadius: 0.4).fill()
+            }
+            let heights: [CGFloat] = [2.6, 5.2, 8.0, 5.2, 2.6]
+            for (i, h) in heights.enumerated() {
+                let cx = 9.0 + CGFloat(i - 2) * 2.0
+                let rect = NSRect(x: cx - 0.65, y: 9 - h / 2, width: 1.3, height: h)
+                NSBezierPath(roundedRect: rect, xRadius: 0.65, yRadius: 0.65).fill()
+            }
+            return true
         }
-        guard let image = NSImage(systemSymbolName: name, accessibilityDescription: "Riffle") else { return }
         image.isTemplate = true
-        statusItem.button?.image = image
+        return image
+    }()
+
+    private func icon(_ s: IconState) {
+        let tint: NSColor?
+        switch s {
+        case .idle: tint = nil
+        case .recording: tint = .systemRed
+        case .processing: tint = .systemGray
+        }
+        statusItem.button?.image = Self.menuBarMark
         statusItem.button?.contentTintColor = tint
     }
 
