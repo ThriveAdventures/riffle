@@ -28,13 +28,31 @@ def main() -> int:
 
     src = Image.open(src_path).convert("RGB")
 
-    # Crop the tile off any white canvas: bbox of clearly-non-white pixels.
+    # Crop the tile off any white canvas. A hard darkness threshold finds
+    # the tile while excluding the artwork's soft drop shadow (midtone
+    # gray), which would otherwise skew the crop off-center.
     gray = src.convert("L")
-    mask = gray.point(lambda p: 255 if p < 235 else 0)
-    bbox = mask.getbbox()
-    tile = src.crop(bbox) if bbox else src
-    side = min(tile.size)
-    tile = ImageOps.fit(tile, (side, side), centering=(0.5, 0.5))
+    hard = gray.point(lambda p: 255 if p < 120 else 0)
+    bbox = hard.getbbox()
+    if bbox is None:
+        bbox = (0, 0, src.size[0], src.size[1])
+    l, t, r, b = bbox
+    side = min(r - l, b - t)
+
+    # Re-center the crop box on the bright mark so the subject is optically
+    # exact even if the tile bounds are slightly asymmetric.
+    probe = src.crop((l, t, l + side, t + side)).convert("L")
+    bright = probe.point(lambda p: 255 if p > 180 else 0)
+    bb = bright.getbbox()
+    if bb:
+        mark_cx = l + (bb[0] + bb[2]) / 2
+        mark_cy = t + (bb[1] + bb[3]) / 2
+    else:
+        mark_cx = l + side / 2
+        mark_cy = t + side / 2
+    x0 = max(0, min(src.size[0] - side, int(mark_cx - side / 2)))
+    y0 = max(0, min(src.size[1] - side, int(mark_cy - side / 2)))
+    tile = src.crop((x0, y0, x0 + side, y0 + side))
 
     # Shave any painted edge bevel off the artwork (image models like to
     # frame the tile in bright trim that reads badly once masked), then a
