@@ -53,6 +53,7 @@ final class HotkeyManager {
         guard tap == nil else { return true }
         let mask = CGEventMask(1 << CGEventType.flagsChanged.rawValue)
             | CGEventMask(1 << CGEventType.keyDown.rawValue)
+            | CGEventMask(1 << CGEventType.keyUp.rawValue)
         let refcon = Unmanaged.passUnretained(self).toOpaque()
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
@@ -88,10 +89,17 @@ final class HotkeyManager {
             return Unmanaged.passUnretained(event)
         }
 
-        if type == .keyDown {
+        if type == .keyDown || type == .keyUp {
             let keycode = event.getIntegerValueField(.keyboardEventKeycode)
-            if keycode == 53, capturing {  // Escape cancels an active recording
+            if type == .keyDown, keycode == 53, capturing {  // Escape cancels an active recording
                 DispatchQueue.main.async { self.onCancel?() }
+                return nil
+            }
+            // Modern Macs also emit a Globe key event (keycode 63 or 179)
+            // for a bare fn tap; that event is what summons the emoji
+            // palette inside apps. When fn is our hotkey it is swallowed.
+            if key == .fn, keycode == 63 || keycode == 179 {
+                Log.write("hotkey: swallowed globe \(type == .keyDown ? "keyDown" : "keyUp") keycode \(keycode)")
                 return nil
             }
             return Unmanaged.passUnretained(event)
@@ -123,6 +131,9 @@ final class HotkeyManager {
         if down != isDown {
             isDown = down
             let at = Date()
+            if key == .fn {
+                Log.write("hotkey: fn \(down ? "down" : "up") keycode \(keycode) flags 0x\(String(flags.rawValue, radix: 16))")
+            }
             if down {
                 let shiftHeld = flags.contains(.maskShift)
                 let callback = onDown

@@ -48,6 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let audio = AudioRecorder()
     private var currentJob: DictationJob?
     private var handsFree = false
+    private var handsFreeEngagedAt = Date.distantPast
     private var ignoreNextUp = false
     private var pressStart = Date.distantPast
 
@@ -172,6 +173,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let self else { return }
             if currentJob != nil {
                 if handsFree {
+                    // Debounce: no human re-taps within a quarter second of
+                    // engaging hands-free. Synthetic duplicate events from
+                    // the fn/Globe layer must not stop the recording.
+                    guard at.timeIntervalSince(handsFreeEngagedAt) > 0.25 else {
+                        ignoreNextUp = true
+                        return
+                    }
                     ignoreNextUp = true
                     stopAndProcess()
                 }
@@ -188,8 +196,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             guard currentJob != nil, !handsFree else { return }
             let duration = at.timeIntervalSince(pressStart)
-            if duration < 0.35 {
+            // Generous tap window: no one dictates in under 0.6s of
+            // holding, and taps right at a tighter boundary misclassify
+            // as hold-releases that instantly stop the recording.
+            if duration < 0.6 {
                 handsFree = true
+                handsFreeEngagedAt = at
                 hud.showListening(handsFree: true, edit: currentJob?.editMode ?? false,
                                   appIcon: currentJob?.appIcon)
             } else {
