@@ -116,6 +116,7 @@ Config lives at `~/Library/Application Support/Riffle/config.json`
 | `restore_clipboard` | `true` | put the old clipboard back after pasting |
 | `sounds` | `true` | start and stop chimes |
 | `history_enabled` | `true` | log dictations to history.jsonl |
+| `fun` | `true` | occasional emoji in the HUD success flashes |
 | `max_record_seconds` | `240` | hard stop for a single dictation |
 
 Dictation history: `~/Library/Application Support/Riffle/history.jsonl`

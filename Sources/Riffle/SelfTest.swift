@@ -73,7 +73,8 @@ func runHudTest(capturePrefix: String?) -> Never {
     let app = NSApplication.shared
     app.setActivationPolicy(.accessory)
     let hud = HUD()
-    hud.showListening(handsFree: false)
+    let icon = NSWorkspace.shared.icon(forFile: "/Applications/Riffle.app")
+    hud.showListening(handsFree: false, appIcon: icon, prime: true)
     var t: Double = 0
     Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
         t += 0.05

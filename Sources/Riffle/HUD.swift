@@ -10,6 +10,7 @@ final class HUD {
     private let label = NSTextField(labelWithString: "")
     private let dot = NSView(frame: NSRect(x: 20, y: 19, width: 10, height: 10))
     private let spinner = NSProgressIndicator(frame: NSRect(x: 17, y: 16, width: 16, height: 16))
+    private let appIconView = NSImageView(frame: NSRect(x: 170, y: 14, width: 20, height: 20))
     private let bars = LevelBarsView(frame: NSRect(x: 206, y: 13, width: 62, height: 22))
     private var hideTimer: Timer?
     private var visible = false
@@ -88,9 +89,13 @@ final class HUD {
         label.lineBreakMode = .byTruncatingTail
 
         bars.autoresizingMask = [.minXMargin]  // pin to the right edge during the entrance stretch
+        appIconView.autoresizingMask = [.minXMargin]
+        appIconView.imageScaling = .scaleProportionallyUpOrDown
+        appIconView.isHidden = true
         chrome.addSubview(dot)
         chrome.addSubview(spinner)
         chrome.addSubview(label)
+        chrome.addSubview(appIconView)
         chrome.addSubview(bars)
         panel.contentView = root
     }
@@ -107,7 +112,8 @@ final class HUD {
         return image
     }
 
-    func showListening(handsFree: Bool, edit: Bool = false) {
+    func showListening(handsFree: Bool, edit: Bool = false,
+                       appIcon: NSImage? = nil, prime: Bool = false) {
         hideTimer?.invalidate()
         hideTimer = nil
         spinner.stopAnimation(nil)
@@ -116,11 +122,15 @@ final class HUD {
         dot.layer?.backgroundColor = (edit ? NSColor.systemPurple : NSColor.systemRed).cgColor
         startPulse()
         bars.isHidden = false
+        appIconView.image = appIcon
+        appIconView.isHidden = (appIcon == nil)
+        label.frame = NSRect(x: 40, y: 15, width: 124, height: 18)
         if edit {
             label.stringValue = handsFree ? "Editing, tap to stop" : "Editing selection"
         } else {
             label.stringValue = handsFree ? "Listening, tap to stop" : "Listening"
         }
+        if prime { bars.prime() }
         present()
     }
 
@@ -130,8 +140,10 @@ final class HUD {
         stopPulse()
         dot.isHidden = true
         bars.isHidden = true
+        appIconView.isHidden = true
         spinner.isHidden = false
         spinner.startAnimation(nil)
+        label.frame = NSRect(x: 40, y: 15, width: 224, height: 18)
         label.stringValue = "Polishing"
         present()
     }
@@ -142,8 +154,10 @@ final class HUD {
         spinner.stopAnimation(nil)
         spinner.isHidden = true
         bars.isHidden = true
+        appIconView.isHidden = true
         dot.isHidden = false
         dot.layer?.backgroundColor = (ok ? NSColor.systemGreen : NSColor.systemOrange).cgColor
+        label.frame = NSRect(x: 40, y: 15, width: 224, height: 18)
         label.stringValue = message
         present()
         hideTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
@@ -224,8 +238,38 @@ final class HUD {
 
 final class LevelBarsView: NSView {
     private var levels: [Float] = Array(repeating: 0.06, count: 12)
+    private var primeTimer: Timer?
+
+    // A quick left-to-right wave before live levels arrive, like the meter
+    // is stretching. Real audio pushes are ignored until it finishes.
+    func prime() {
+        primeTimer?.invalidate()
+        levels = Array(repeating: 0.06, count: levels.count)
+        var tick = 0
+        primeTimer = Timer.scheduledTimer(withTimeInterval: 0.028, repeats: true) { [weak self] timer in
+            guard let self else {
+                timer.invalidate()
+                return
+            }
+            tick += 1
+            let center = Double(tick) - 3
+            for i in 0..<levels.count {
+                let distance = Double(i) - center
+                let bump = exp(-distance * distance / 3.0)
+                levels[i] = Float(max(0.06, bump * 0.85))
+            }
+            needsDisplay = true
+            if tick > levels.count + 4 {
+                timer.invalidate()
+                primeTimer = nil
+                levels = levels.map { _ in 0.06 }
+                needsDisplay = true
+            }
+        }
+    }
 
     func push(_ level: Float) {
+        guard primeTimer == nil else { return }
         // Fast attack, slow decay reads as a natural meter.
         let last = levels.last ?? 0.06
         let smoothed = max(level, last * 0.72)

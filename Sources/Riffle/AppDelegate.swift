@@ -13,13 +13,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private final class DictationJob {
         let seq: Int
         let app: String?
+        let appIcon: NSImage?
         let editMode: Bool
         var selection: String?
         var presavedClipboard: TextInserter.ClipboardSnapshot?
 
-        init(seq: Int, app: String?, editMode: Bool) {
+        init(seq: Int, app: String?, appIcon: NSImage?, editMode: Bool) {
             self.seq = seq
             self.app = app
+            self.appIcon = appIcon
             self.editMode = editMode
         }
     }
@@ -188,7 +190,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let duration = Date().timeIntervalSince(pressStart)
             if duration < 0.35 {
                 handsFree = true
-                hud.showListening(handsFree: true, edit: currentJob?.editMode ?? false)
+                hud.showListening(handsFree: true, edit: currentJob?.editMode ?? false,
+                                  appIcon: currentJob?.appIcon)
             } else {
                 stopAndProcess()
             }
@@ -231,8 +234,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
 
+        let frontmost = NSWorkspace.shared.frontmostApplication
         let job = DictationJob(seq: seqCounter,
-                               app: NSWorkspace.shared.frontmostApplication?.localizedName,
+                               app: frontmost?.localizedName,
+                               appIcon: frontmost?.icon,
                                editMode: editMode)
         seqCounter += 1
         if editMode {
@@ -247,7 +252,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hotkey.capturing = true
         updateIcon()
         playSound("Pop")
-        hud.showListening(handsFree: false, edit: editMode)
+        hud.showListening(handsFree: false, edit: editMode, appIcon: job.appIcon, prime: true)
     }
 
     private func cancelRecording() {
@@ -420,11 +425,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             Log.write("\(p.editMode ? "edit" : "dictation"): \(String(format: "%.1f", p.seconds))s audio, whisper \(p.transcribeMs)ms, cleanup \(p.cleanupMs)ms, llm=\(p.usedLLM)")
             if p.editMode {
-                flashIfIdle("Edited", ok: true)
+                flashIfIdle("Edited" + celebrationSuffix(edit: true), ok: true)
             } else {
-                flashIfIdle(p.usedLLM ? "Inserted" : "Inserted raw transcript", ok: true)
+                flashIfIdle((p.usedLLM ? "Inserted" : "Inserted raw transcript")
+                            + celebrationSuffix(edit: false), ok: true)
             }
         }
+    }
+
+    // Occasional emoji on success flashes. Curated, rare enough to stay a
+    // treat. Config "fun": false turns it off.
+    private func celebrationSuffix(edit: Bool) -> String {
+        guard config.fun, Double.random(in: 0..<1) < 0.4 else { return "" }
+        let common = edit ? ["\u{2728}", "\u{1FA84}", "\u{2702}\u{FE0F}"]
+                          : ["\u{2728}", "\u{1F30A}", "\u{270D}\u{FE0F}", "\u{26A1}\u{FE0F}", "\u{1F3AF}"]
+        let rare = ["\u{1F6F6}", "\u{1F341}", "\u{1F9AB}"]
+        let pool = Double.random(in: 0..<1) < 0.15 ? rare : common
+        guard let pick = pool.randomElement() else { return "" }
+        return "  " + pick
     }
 
     // Never stomp the Listening HUD of an in-progress recording with a
