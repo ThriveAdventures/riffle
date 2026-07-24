@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """Build AppIcon.icns from a square icon artwork PNG.
 
-Usage: python3 scripts/build_icon.py <artwork.png> [output.icns]
+Usage: python3 scripts/build_icon.py [--full-bleed] <artwork.png> [output.icns]
+
+--full-bleed: the artwork is a flat surface filling the whole image (the
+preferred workflow; render logos/iterations/iteration-2-fullbleed.svg and
+material-pass it with flat-edge constraints). Skips tile detection,
+cropping, and edge shaving entirely; the script owns the shape.
 
 Takes artwork of a full-bleed tile (or a tile on a white background, as
 image models tend to produce), crops it, masks it to the macOS rounded
@@ -20,13 +25,21 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter, ImageOps
 
 def main() -> int:
-    if len(sys.argv) < 2:
+    args = sys.argv[1:]
+    full_bleed = "--full-bleed" in args
+    args = [a for a in args if a != "--full-bleed"]
+    if not args:
         print(__doc__)
         return 1
-    src_path = Path(sys.argv[1])
-    out_path = Path(sys.argv[2]) if len(sys.argv) > 2 else Path("assets/AppIcon.icns")
+    src_path = Path(args[0])
+    out_path = Path(args[1]) if len(args) > 1 else Path("assets/AppIcon.icns")
 
     src = Image.open(src_path).convert("RGB")
+
+    if full_bleed:
+        side = min(src.size)
+        tile = ImageOps.fit(src, (side, side), centering=(0.5, 0.5))
+        return finish(tile, out_path, shave=False)
 
     # Crop the tile off any white canvas. A hard darkness threshold finds
     # the tile while excluding the artwork's soft drop shadow (midtone
@@ -54,12 +67,17 @@ def main() -> int:
     y0 = max(0, min(src.size[1] - side, int(mark_cy - side / 2)))
     tile = src.crop((x0, y0, x0 + side, y0 + side))
 
-    # Shave any painted edge bevel off the artwork (image models like to
-    # frame the tile in bright trim that reads badly once masked), then a
-    # controlled hairline is added back below.
-    inset = int(side * 0.05)
-    tile = tile.crop((inset, inset, side - inset, side - inset))
+    return finish(tile, out_path, shave=True)
+
+
+def finish(tile: Image.Image, out_path: Path, shave: bool) -> int:
     side = tile.size[0]
+    if shave:
+        # Shave any painted edge bevel off the artwork (image models like
+        # to frame the tile in bright trim that reads badly once masked);
+        # a controlled hairline is added back below.
+        inset = int(side * 0.05)
+        tile = tile.crop((inset, inset, side - inset, side - inset))
 
     # Apple icon grid: 824px tile centered on a 1024 canvas.
     TILE, CANVAS = 824, 1024

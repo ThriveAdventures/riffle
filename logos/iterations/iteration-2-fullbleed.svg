@@ -1,0 +1,76 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#131A26"/>
+      <stop offset="1" stop-color="#0A0E16"/>
+    </linearGradient>
+    <radialGradient id="tealGlow" cx="0.5" cy="1.05" r="0.75">
+      <stop offset="0" stop-color="#2E8296" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#2E8296" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.085"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="sweep" x1="0" y1="0" x2="0.55" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.04"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="strokeIce" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F6FCFF"/>
+      <stop offset="1" stop-color="#C6E3F2"/>
+    </linearGradient>
+    <linearGradient id="barIce" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#D6F0FB"/>
+    </linearGradient>
+    <filter id="halo" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="12"/>
+    </filter>
+  </defs>
+
+  <g id="surface">
+    <rect x="0" y="0" width="1024" height="1024" fill="url(#bg)"/>
+    <rect x="0" y="0" width="1024" height="1024" fill="url(#tealGlow)"/>
+    <rect x="0" y="0" width="1024" height="218" fill="url(#sheen)"/>
+    <polygon points="0,0 572,0 348,596 0,846" fill="url(#sweep)" filter="url(#halo)"/>
+  </g>
+
+  <g id="mark" transform="translate(512 512)">
+    <g id="halo-layer" opacity="0.40">
+      <circle r="332" fill="none" stroke="#7FD2E6" stroke-width="26" filter="url(#halo)"/>
+      <g fill="#7FD2E6" filter="url(#halo)">
+        <rect x="-209" y="-32" width="34" height="64" rx="17"/>
+        <rect x="-161" y="-55" width="34" height="110" rx="17"/>
+        <rect x="-113" y="-84" width="34" height="168" rx="17"/>
+        <rect x="-65" y="-116" width="34" height="232" rx="17"/>
+        <rect x="-17" y="-143" width="34" height="286" rx="17"/>
+        <rect x="31" y="-116" width="34" height="232" rx="17"/>
+        <rect x="79" y="-84" width="34" height="168" rx="17"/>
+        <rect x="127" y="-55" width="34" height="110" rx="17"/>
+        <rect x="175" y="-32" width="34" height="64" rx="17"/>
+      </g>
+    </g>
+
+    <circle id="ring" r="332" fill="none" stroke="url(#strokeIce)" stroke-width="22"/>
+
+    <g id="ticks" fill="url(#strokeIce)" opacity="0.85">
+      <rect x="-10" y="-306" width="20" height="50" rx="10"/>
+      <rect x="-10" y="256" width="20" height="50" rx="10"/>
+      <rect x="-306" y="-10" width="50" height="20" rx="10"/>
+      <rect x="256" y="-10" width="50" height="20" rx="10"/>
+    </g>
+
+    <g id="waveform" fill="url(#barIce)">
+      <rect x="-209" y="-32" width="34" height="64" rx="17"/>
+      <rect x="-161" y="-55" width="34" height="110" rx="17"/>
+      <rect x="-113" y="-84" width="34" height="168" rx="17"/>
+      <rect x="-65" y="-116" width="34" height="232" rx="17"/>
+      <rect x="-17" y="-143" width="34" height="286" rx="17"/>
+      <rect x="31" y="-116" width="34" height="232" rx="17"/>
+      <rect x="79" y="-84" width="34" height="168" rx="17"/>
+      <rect x="127" y="-55" width="34" height="110" rx="17"/>
+      <rect x="175" y="-32" width="34" height="64" rx="17"/>
+    </g>
+  </g>
+</svg>
