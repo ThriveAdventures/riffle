@@ -131,7 +131,7 @@ final class HUD {
             label.stringValue = handsFree ? "Tap to stop" : "Listening"
         }
         if prime { bars.prime() }
-        present()
+        present(width: contentWidth(for: label.stringValue, meter: true, icon: appIcon != nil))
     }
 
     func showProcessing() {
@@ -145,7 +145,7 @@ final class HUD {
         spinner.startAnimation(nil)
         label.frame = NSRect(x: 40, y: 15, width: 196, height: 18)
         label.stringValue = "Polishing"
-        present()
+        present(width: contentWidth(for: label.stringValue, meter: false, icon: false))
     }
 
     func flash(_ message: String, ok: Bool) {
@@ -159,7 +159,7 @@ final class HUD {
         dot.layer?.backgroundColor = (ok ? NSColor.systemGreen : NSColor.systemOrange).cgColor
         label.frame = NSRect(x: 40, y: 15, width: 196, height: 18)
         label.stringValue = message
-        present()
+        present(width: contentWidth(for: message, meter: false, icon: false))
         hideTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
             self?.hide()
         }
@@ -183,16 +183,33 @@ final class HUD {
         })
     }
 
-    private func present() {
+    // Width hugs the content per state; changes animate centered, so the
+    // pill visibly collapses into the small "Polishing" capsule and expands
+    // back for the meter.
+    private func contentWidth(for text: String, meter: Bool, icon: Bool) -> CGFloat {
+        let font = NSFont.systemFont(ofSize: 13, weight: .medium)
+        let labelW = ceil((text as NSString).size(withAttributes: [.font: font]).width)
+        var w: CGFloat = 40 + labelW + 20
+        if meter {
+            w = 40 + labelW + 12 + (icon ? 28 : 0) + 62 + 20
+        }
+        return min(max(w, 120), 360)
+    }
+
+    private func present(width: CGFloat) {
         guard let screen = NSScreen.main else { return }
         let f = screen.visibleFrame
-        let w: CGFloat = 252
+        let w = width
         let h: CGFloat = 48
         let x = f.midX - w / 2
         let y = f.minY + 84
         let target = NSRect(x: x, y: y, width: w, height: h)
         if visible {
-            panel.setFrame(target, display: true)
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.18
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                panel.animator().setFrame(target, display: true)
+            }
             panel.alphaValue = 1
             return
         }
@@ -237,14 +254,14 @@ final class HUD {
 }
 
 final class LevelBarsView: NSView {
-    private var levels: [Float] = Array(repeating: 0.06, count: 12)
+    private var levels: [Float] = Array(repeating: 0.08, count: 12)
     private var primeTimer: Timer?
 
     // A quick left-to-right wave before live levels arrive, like the meter
     // is stretching. Real audio pushes are ignored until it finishes.
     func prime() {
         primeTimer?.invalidate()
-        levels = Array(repeating: 0.06, count: levels.count)
+        levels = Array(repeating: 0.08, count: levels.count)
         var tick = 0
         primeTimer = Timer.scheduledTimer(withTimeInterval: 0.028, repeats: true) { [weak self] timer in
             guard let self else {
@@ -256,13 +273,13 @@ final class LevelBarsView: NSView {
             for i in 0..<levels.count {
                 let distance = Double(i) - center
                 let bump = exp(-distance * distance / 3.0)
-                levels[i] = Float(max(0.06, bump * 0.85))
+                levels[i] = Float(max(0.08, bump * 0.9))
             }
             needsDisplay = true
             if tick > levels.count + 4 {
                 timer.invalidate()
                 primeTimer = nil
-                levels = levels.map { _ in 0.06 }
+                levels = levels.map { _ in 0.08 }
                 needsDisplay = true
             }
         }
@@ -272,9 +289,9 @@ final class LevelBarsView: NSView {
         guard primeTimer == nil else { return }
         // Fast attack, slow decay reads as a natural meter.
         let last = levels.last ?? 0.06
-        let smoothed = max(level, last * 0.72)
+        let smoothed = max(level, last * 0.78)
         levels.removeFirst()
-        levels.append(max(0.06, min(1, smoothed)))
+        levels.append(max(0.08, min(1, smoothed)))
         needsDisplay = true
     }
 

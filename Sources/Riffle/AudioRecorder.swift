@@ -127,7 +127,7 @@ final class AudioRecorder {
                 self.samples.append(contentsOf: chunk)
                 let total = self.samples.count
                 DispatchQueue.main.async {
-                    self.levelHandler?(min(1, rms * 16))
+                    self.levelHandler?(min(1, pow(min(1, rms * 22), 0.8)))
                     if total >= maxSamples, self.isRecording, !self.autoStopFired {
                         self.autoStopFired = true
                         self.onAutoStop?()
