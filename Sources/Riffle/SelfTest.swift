@@ -78,7 +78,11 @@ func runHudTest(capturePrefix: String?) -> Never {
     var t: Double = 0
     Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
         t += 0.05
-        hud.setLevel(Float(0.15 + 0.65 * abs(sin(t * 2.6))))
+        var bands = [Float](repeating: 0, count: 12)
+        for b in 0..<12 {
+            bands[b] = Float(abs(sin(t * 2.9 + Double(b) * 0.65)) * (0.25 + 0.6 * abs(sin(t * 1.4))))
+        }
+        hud.setSpectrum(bands)
         if let prefix = capturePrefix {
             if t >= 1.5, t < 1.55 { captureWindow(hud.testWindow, to: "\(prefix)-listening.png") }
             if t >= 3.5, t < 3.55 { captureWindow(hud.testWindow, to: "\(prefix)-handsfree.png") }

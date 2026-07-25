@@ -122,6 +122,7 @@ final class HUD {
         dot.layer?.backgroundColor = (edit ? NSColor.systemPurple : NSColor.systemRed).cgColor
         startPulse()
         bars.isHidden = false
+        bars.startAnimating()
         appIconView.image = appIcon
         appIconView.isHidden = (appIcon == nil)
         label.frame = NSRect(x: 40, y: 15, width: 96, height: 18)
@@ -151,6 +152,7 @@ final class HUD {
         stopPulse()
         dot.isHidden = true
         bars.isHidden = true
+        bars.stopAnimating()
         appIconView.isHidden = true
         spinner.isHidden = false
         spinner.startAnimation(nil)
@@ -165,6 +167,7 @@ final class HUD {
         spinner.stopAnimation(nil)
         spinner.isHidden = true
         bars.isHidden = true
+        bars.stopAnimating()
         appIconView.isHidden = true
         dot.isHidden = false
         dot.layer?.backgroundColor = (ok ? NSColor.systemGreen : NSColor.systemOrange).cgColor
@@ -176,8 +179,8 @@ final class HUD {
         }
     }
 
-    func setLevel(_ level: Float) {
-        bars.push(level)
+    func setSpectrum(_ bands: [Float]) {
+        bars.setSpectrum(bands)
     }
 
     func hide() {
@@ -264,45 +267,80 @@ final class HUD {
     }
 }
 
+// Winamp-spirited 12-band spectrum analyzer: real FFT bands in, per-band
+// fast-attack slow-decay physics, falling peak caps, energy-scaled glow.
 final class LevelBarsView: NSView {
-    private var levels: [Float] = Array(repeating: 0.08, count: 12)
-    private var primeTimer: Timer?
+    private let count = 12
+    private var targets: [Float]
+    private var values: [Float]
+    private var caps: [Float]
+    private var capVelocity: [Float]
+    private var animTimer: Timer?
+    private var primeTicks = 0
 
-    // A quick left-to-right wave before live levels arrive, like the meter
-    // is stretching. Real audio pushes are ignored until it finishes.
-    func prime() {
-        primeTimer?.invalidate()
-        levels = Array(repeating: 0.08, count: levels.count)
-        var tick = 0
-        primeTimer = Timer.scheduledTimer(withTimeInterval: 0.028, repeats: true) { [weak self] timer in
-            guard let self else {
-                timer.invalidate()
-                return
-            }
-            tick += 1
-            let center = Double(tick) - 3
-            for i in 0..<levels.count {
-                let distance = Double(i) - center
-                let bump = exp(-distance * distance / 3.0)
-                levels[i] = Float(max(0.08, bump * 0.9))
-            }
-            needsDisplay = true
-            if tick > levels.count + 4 {
-                timer.invalidate()
-                primeTimer = nil
-                levels = levels.map { _ in 0.08 }
-                needsDisplay = true
-            }
+    override init(frame frameRect: NSRect) {
+        targets = Array(repeating: 0.08, count: count)
+        values = Array(repeating: 0.08, count: count)
+        caps = Array(repeating: 0.12, count: count)
+        capVelocity = Array(repeating: 0, count: count)
+        super.init(frame: frameRect)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    func setSpectrum(_ bands: [Float]) {
+        guard primeTicks == 0 else { return }
+        for i in 0..<count {
+            targets[i] = max(0.08, min(1, i < bands.count ? bands[i] : 0))
         }
     }
 
-    func push(_ level: Float) {
-        guard primeTimer == nil else { return }
-        // Fast attack, slow decay reads as a natural meter.
-        let last = levels.last ?? 0.06
-        let smoothed = max(level, last * 0.78)
-        levels.removeFirst()
-        levels.append(max(0.08, min(1, smoothed)))
+    // Left-to-right greeting wave before live audio arrives.
+    func prime() {
+        primeTicks = count + 6
+    }
+
+    func startAnimating() {
+        guard animTimer == nil else { return }
+        animTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+            self?.step()
+        }
+    }
+
+    func stopAnimating() {
+        animTimer?.invalidate()
+        animTimer = nil
+        primeTicks = 0
+        targets = Array(repeating: 0.08, count: count)
+        values = targets
+        caps = Array(repeating: 0.12, count: count)
+        capVelocity = Array(repeating: 0, count: count)
+    }
+
+    private func step() {
+        if primeTicks > 0 {
+            let center = Double(count + 6 - primeTicks) - 2
+            for i in 0..<count {
+                let d = Double(i) - center
+                targets[i] = Float(max(0.08, exp(-d * d / 3.0) * 0.9))
+            }
+            primeTicks -= 1
+            if primeTicks == 0 {
+                targets = Array(repeating: 0.08, count: count)
+            }
+        }
+        for i in 0..<count {
+            let t = targets[i]
+            let rate: Float = t > values[i] ? 0.55 : 0.16
+            values[i] += (t - values[i]) * rate
+            if values[i] >= caps[i] {
+                caps[i] = values[i]
+                capVelocity[i] = 0
+            } else {
+                capVelocity[i] += 0.006
+                caps[i] = max(values[i], caps[i] - capVelocity[i])
+            }
+        }
         needsDisplay = true
     }
 
@@ -310,16 +348,22 @@ final class LevelBarsView: NSView {
         let barWidth: CGFloat = 3
         let gap: CGFloat = 2.2
         let h = bounds.height
-        let count = levels.count
-        for (i, level) in levels.enumerated() {
-            // Newer bars (right side) brighter, with a faint cool tint.
-            let age = CGFloat(i + 1) / CGFloat(count)
-            let alpha = 0.30 + 0.62 * age
-            NSColor(calibratedRed: 0.82, green: 0.93, blue: 1.0, alpha: alpha).setFill()
-            let barHeight = max(2.5, CGFloat(level) * h)
+        for i in 0..<count {
+            let v = CGFloat(values[i])
             let x = CGFloat(i) * (barWidth + gap)
+            let barHeight = max(2.5, v * h)
+            let alpha = 0.4 + 0.55 * v
+            NSColor(calibratedRed: 0.78, green: 0.93, blue: 1.0, alpha: alpha).setFill()
             let rect = NSRect(x: x, y: (h - barHeight) / 2, width: barWidth, height: barHeight)
             NSBezierPath(roundedRect: rect, xRadius: 1.5, yRadius: 1.5).fill()
+
+            // Falling peak cap above the bar's top edge.
+            let capValue = CGFloat(caps[i])
+            if capValue > 0.14 {
+                let capY = min(h - 1.6, (h + capValue * h) / 2 + 1.2)
+                NSColor.white.withAlphaComponent(0.85).setFill()
+                NSRect(x: x, y: capY, width: barWidth, height: 1.6).fill()
+            }
         }
     }
 }

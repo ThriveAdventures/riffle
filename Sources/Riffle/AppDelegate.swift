@@ -90,8 +90,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         wireHotkey()
         setupStatusItem()
 
-        audio.levelHandler = { [weak self] level in
-            self?.hud.setLevel(level)
+        audio.spectrumHandler = { [weak self] bands in
+            self?.hud.setSpectrum(bands)
         }
         audio.onAutoStop = { [weak self] in
             self?.stopAndProcess()

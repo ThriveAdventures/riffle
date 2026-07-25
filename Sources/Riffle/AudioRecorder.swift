@@ -1,4 +1,5 @@
 import AVFoundation
+import Accelerate
 
 // Captures microphone audio at the device's native rate, then resamples to
 // 16 kHz mono 16-bit WAV, which is what whisper.cpp expects.
@@ -24,10 +25,16 @@ final class AudioRecorder {
 
     var maxSeconds = 240
     var graceSeconds: TimeInterval = 8
-    var levelHandler: ((Float) -> Void)?
+    // 12 log-spaced voice-band magnitudes, 0...1, delivered on main.
+    var spectrumHandler: (([Float]) -> Void)?
     var onAutoStop: (() -> Void)?
 
+    private let fftSize = 2048
+    private let fftSetup = vDSP_create_fftsetup(11, FFTRadix(kFFTRadix2))
+    private var hannWindow = [Float](repeating: 0, count: 2048)
+
     init() {
+        vDSP_hann_window(&hannWindow, vDSP_Length(fftSize), Int32(vDSP_HANN_NORM))
         // A kept-warm engine does not follow the system default input when
         // the device changes (headphones connecting, for example); it keeps
         // capturing a dead route, which records silence. The engine posts a
@@ -123,11 +130,12 @@ final class AudioRecorder {
             var sum: Float = 0
             for v in chunk { sum += v * v }
             let rms = sqrt(sum / Float(count))
+            _ = rms
             self.queue.async {
                 self.samples.append(contentsOf: chunk)
                 let total = self.samples.count
+                self.publishSpectrum()
                 DispatchQueue.main.async {
-                    self.levelHandler?(min(1, pow(min(1, rms * 22), 0.8)))
                     if total >= maxSamples, self.isRecording, !self.autoStopFired {
                         self.autoStopFired = true
                         self.onAutoStop?()
@@ -143,6 +151,46 @@ final class AudioRecorder {
             throw error
         }
         isRecording = true
+    }
+
+    // Real spectrum for the HUD meter: Hann window, 2048-point FFT, 12
+    // log-spaced bands over the voice range, dB-mapped to 0...1 with a
+    // gentle treble tilt (speech rolls off up high).
+    private func publishSpectrum() {
+        guard isRecording, samples.count >= fftSize, let setup = fftSetup else { return }
+        var frame = Array(samples.suffix(fftSize))
+        vDSP_vmul(frame, 1, hannWindow, 1, &frame, 1, vDSP_Length(fftSize))
+        let half = fftSize / 2
+        var real = [Float](repeating: 0, count: half)
+        var imag = [Float](repeating: 0, count: half)
+        var mags = [Float](repeating: 0, count: half)
+        real.withUnsafeMutableBufferPointer { rp in
+            imag.withUnsafeMutableBufferPointer { ip in
+                var split = DSPSplitComplex(realp: rp.baseAddress!, imagp: ip.baseAddress!)
+                frame.withUnsafeBytes { fb in
+                    vDSP_ctoz(fb.bindMemory(to: DSPComplex.self).baseAddress!, 2, &split, 1, vDSP_Length(half))
+                }
+                vDSP_fft_zrip(setup, &split, 1, 11, FFTDirection(FFT_FORWARD))
+                vDSP_zvmags(&split, 1, &mags, 1, vDSP_Length(half))
+            }
+        }
+        let bandCount = 12
+        var bands = [Float](repeating: 0, count: bandCount)
+        let fMin: Float = 100, fMax: Float = 6000
+        let binHz = Float(nativeRate) / Float(fftSize)
+        for b in 0..<bandCount {
+            let lo = fMin * pow(fMax / fMin, Float(b) / Float(bandCount))
+            let hi = fMin * pow(fMax / fMin, Float(b + 1) / Float(bandCount))
+            let i0 = max(1, Int(lo / binHz))
+            let i1 = min(half - 1, max(i0 + 1, Int(hi / binHz)))
+            var sum: Float = 0
+            for i in i0..<i1 { sum += mags[i] }
+            let mean = sum / Float(i1 - i0)
+            let db = 10 * log10(max(mean, 1e-12))
+            let tilt = 0.9 + 0.35 * Float(b) / Float(bandCount - 1)
+            bands[b] = min(1, max(0, (db + 58) / 42) * tilt)
+        }
+        DispatchQueue.main.async { self.spectrumHandler?(bands) }
     }
 
     func cancel() {
