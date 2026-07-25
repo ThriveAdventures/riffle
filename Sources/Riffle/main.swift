@@ -23,4 +23,17 @@ let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate
 app.setActivationPolicy(.accessory)
+
+// pkill and friends deliver SIGTERM, which skips applicationWillTerminate
+// and orphans the whisper-server child (1.7 GB each). Route signals into a
+// normal terminate so cleanup always runs.
+signal(SIGTERM, SIG_IGN)
+signal(SIGINT, SIG_IGN)
+let sigtermSource = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+sigtermSource.setEventHandler { NSApp.terminate(nil) }
+sigtermSource.resume()
+let sigintSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
+sigintSource.setEventHandler { NSApp.terminate(nil) }
+sigintSource.resume()
+
 app.run()

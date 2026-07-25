@@ -13,9 +13,11 @@ if [ ! -w "$DEST" ]; then
 fi
 APP="$DEST/Riffle.app"
 
-# Quit a running copy before replacing it.
+# Quit a running copy before replacing it, and reap any whisper-server its
+# death may have orphaned.
 pkill -x Riffle 2>/dev/null || true
 sleep 0.5
+pkill -f 'whisper-server.*--port 12391' 2>/dev/null || true
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"

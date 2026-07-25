@@ -45,6 +45,15 @@ final class WhisperService {
             return
         }
 
+        // Reap any orphaned server from a previous crash or kill; it holds
+        // both the port and about 1.7 GB of memory.
+        let reap = Process()
+        reap.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+        reap.arguments = ["-f", "whisper-server.*--port \(port)"]
+        try? reap.run()
+        reap.waitUntilExit()
+        usleep(150_000)
+
         let p = Process()
         p.executableURL = URL(fileURLWithPath: binaryPath)
         let threads = max(4, ProcessInfo.processInfo.activeProcessorCount - 6)
