@@ -81,9 +81,11 @@ func runHudTest(capturePrefix: String?) -> Never {
         hud.setLevel(Float(0.15 + 0.65 * abs(sin(t * 2.6))))
         if let prefix = capturePrefix {
             if t >= 1.5, t < 1.55 { captureWindow(hud.testWindow, to: "\(prefix)-listening.png") }
+            if t >= 3.5, t < 3.55 { captureWindow(hud.testWindow, to: "\(prefix)-handsfree.png") }
             if t >= 5.0, t < 5.05 { captureWindow(hud.testWindow, to: "\(prefix)-processing.png") }
             if t >= 7.6, t < 7.65 { captureWindow(hud.testWindow, to: "\(prefix)-flash.png") }
         }
+        if t >= 2.8, t < 2.85 { hud.showListening(handsFree: true, appIcon: icon) }
         if t >= 4.0, t < 4.05 { hud.showProcessing() }
         if t >= 7.0, t < 7.05 { hud.flash("Inserted", ok: true) }
         if t >= 9 { exit(0) }

@@ -88,8 +88,8 @@ final class HUD {
         label.textColor = NSColor.white.withAlphaComponent(0.95)
         label.lineBreakMode = .byTruncatingTail
 
-        bars.autoresizingMask = [.minXMargin]  // pin to the right edge during the entrance stretch
-        appIconView.autoresizingMask = [.minXMargin]
+        bars.autoresizingMask = []   // positioned explicitly per state
+        appIconView.autoresizingMask = []
         appIconView.imageScaling = .scaleProportionallyUpOrDown
         appIconView.isHidden = true
         chrome.addSubview(dot)
@@ -130,8 +130,19 @@ final class HUD {
         } else {
             label.stringValue = handsFree ? "Tap to stop" : "Listening"
         }
+        // Explicit left-to-right layout from the measured text, so the icon
+        // and meter can never collide with the label at any width.
+        let font = NSFont.systemFont(ofSize: 13, weight: .medium)
+        let labelW = ceil((label.stringValue as NSString).size(withAttributes: [.font: font]).width) + 6
+        label.frame = NSRect(x: 40, y: 15, width: labelW, height: 18)
+        var xCursor: CGFloat = 40 + labelW + 12
+        if appIcon != nil {
+            appIconView.frame = NSRect(x: xCursor, y: 14, width: 20, height: 20)
+            xCursor += 28
+        }
+        bars.frame = NSRect(x: xCursor, y: 13, width: 62, height: 22)
         if prime { bars.prime() }
-        present(width: contentWidth(for: label.stringValue, meter: true, icon: appIcon != nil))
+        present(width: xCursor + 62 + 20)
     }
 
     func showProcessing() {
