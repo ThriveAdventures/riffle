@@ -351,8 +351,8 @@ final class LevelBarsView: NSView {
         for i in 0..<count {
             let v = CGFloat(values[i])
             let x = CGFloat(i) * (barWidth + gap)
-            let barHeight = max(2.5, v * h)
-            let alpha = 0.4 + 0.55 * v
+            let barHeight = max(2.5, v * h * 0.85)
+            let alpha = 0.38 + 0.5 * v
             NSColor(calibratedRed: 0.78, green: 0.93, blue: 1.0, alpha: alpha).setFill()
             let rect = NSRect(x: x, y: (h - barHeight) / 2, width: barWidth, height: barHeight)
             NSBezierPath(roundedRect: rect, xRadius: 1.5, yRadius: 1.5).fill()
@@ -360,7 +360,7 @@ final class LevelBarsView: NSView {
             // Falling peak cap above the bar's top edge.
             let capValue = CGFloat(caps[i])
             if capValue > 0.14 {
-                let capY = min(h - 1.6, (h + capValue * h) / 2 + 1.2)
+                let capY = min(h - 1.6, (h + capValue * h * 0.85) / 2 + 1.2)
                 NSColor.white.withAlphaComponent(0.85).setFill()
                 NSRect(x: x, y: capY, width: barWidth, height: 1.6).fill()
             }

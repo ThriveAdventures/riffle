@@ -188,7 +188,9 @@ final class AudioRecorder {
             let mean = sum / Float(i1 - i0)
             let db = 10 * log10(max(mean, 1e-12))
             let tilt = 0.9 + 0.35 * Float(b) / Float(bandCount - 1)
-            bands[b] = min(1, max(0, (db + 58) / 42) * tilt)
+            // Softer gain plus mild compression: speech should dance in the
+            // middle of the lane and only real peaks should reach the top.
+            bands[b] = min(1, pow(max(0, (db + 56) / 46), 1.25) * tilt)
         }
         DispatchQueue.main.async { self.spectrumHandler?(bands) }
     }
