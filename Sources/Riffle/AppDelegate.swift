@@ -71,6 +71,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var whisperLine: NSMenuItem!
     private var cleanupLine: NSMenuItem!
     private var cleanupToggle: NSMenuItem!
+    private var engineOllamaItem: NSMenuItem!
+    private var engineAppleItem: NSMenuItem!
     private var loginToggle: NSMenuItem!
     private var axItem: NSMenuItem!
     private var micItem: NSMenuItem!
@@ -107,7 +109,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         checkAccessibility(promptUser: true)
         startHotkeyIfPossible()
 
-        Task { await self.ensureOllama() }
+        if config.cleanupEngine == "ollama" {
+            Task { await self.ensureOllama() }
+        }
         healthTimer = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { [weak self] _ in
             self?.refreshHealth()
         }
@@ -213,6 +217,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    private var cleanupReady: Bool {
+        guard config.cleanupEnabled else { return false }
+        return config.cleanupEngine == "apple"
+            ? AppleCleaner.isAvailable
+            : (ollamaUp && ollamaHasModel)
+    }
+
+    private func engineCleanup(_ raw: String, app: String?) async throws -> String {
+        if config.cleanupEngine == "apple" {
+            return try await AppleCleaner.cleanup(transcript: raw, appName: app,
+                                                  dictionary: config.dictionary)
+        }
+        return try await ollama.cleanup(transcript: raw, appName: app,
+                                        dictionary: config.dictionary)
+    }
+
+    private func engineEdit(text: String, instruction: String) async throws -> String {
+        if config.cleanupEngine == "apple" {
+            return try await AppleCleaner.edit(text: text, instruction: instruction,
+                                               dictionary: config.dictionary)
+        }
+        return try await ollama.edit(text: text, instruction: instruction,
+                                     dictionary: config.dictionary)
+    }
+
     // MARK: - Recording flow
 
     private func startRecording(editMode: Bool) {
@@ -231,7 +260,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if editMode {
             // Edit mode pastes over the user's selection, so a raw-transcript
             // fallback would destroy their text. Refuse instead.
-            guard config.cleanupEnabled, ollamaUp, ollamaHasModel else {
+            guard cleanupReady else {
                 hud.flash("Edit mode needs AI cleanup available", ok: false)
                 return
             }
@@ -347,11 +376,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         var finalText = TextCleanup.basicTidy(raw)
         var usedLLM = false
         var cleanupMs = 0
-        if config.cleanupEnabled, ollamaUp, ollamaHasModel {
+        if cleanupReady {
             let t1 = Date()
             do {
-                let cleaned = try await ollama.cleanup(transcript: raw, appName: job.app,
-                                                       dictionary: config.dictionary)
+                let cleaned = try await engineCleanup(raw, app: job.app)
                 let result = TextCleanup.guardrail(raw: finalText, cleaned: cleaned)
                 finalText = result.0
                 usedLLM = result.1
@@ -386,8 +414,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let t1 = Date()
         var edited: String?
         do {
-            let out = try await ollama.edit(text: selection, instruction: raw,
-                                            dictionary: config.dictionary)
+            let out = try await engineEdit(text: selection, instruction: raw)
             edited = TextCleanup.guardrailEdit(output: out)
         } catch {
             Log.write("edit failed: \(error.localizedDescription)")
@@ -527,7 +554,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             var hasModel = ollamaHasModel
             if o, !hasModel {
                 hasModel = await ollama.hasModel()
-                if hasModel { await ollama.preload() }
+                if hasModel, config.cleanupEngine == "ollama" { await ollama.preload() }
             }
             let resolvedHasModel = hasModel
             await MainActor.run {
@@ -571,6 +598,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                    action: #selector(toggleCleanup), keyEquivalent: "")
         cleanupToggle.target = self
         menu.addItem(cleanupToggle)
+
+        let engineMenu = NSMenu()
+        engineMenu.autoenablesItems = false
+        engineOllamaItem = NSMenuItem(title: "Local model (Ollama)",
+                                      action: #selector(selectEngineOllama), keyEquivalent: "")
+        engineOllamaItem.target = self
+        engineMenu.addItem(engineOllamaItem)
+        engineAppleItem = NSMenuItem(title: "Apple on-device (Foundation Models)",
+                                     action: #selector(selectEngineApple), keyEquivalent: "")
+        engineAppleItem.target = self
+        engineMenu.addItem(engineAppleItem)
+        let engineParent = NSMenuItem(title: "Cleanup engine", action: nil, keyEquivalent: "")
+        engineParent.submenu = engineMenu
+        menu.addItem(engineParent)
 
         loginToggle = NSMenuItem(title: "Launch at login",
                                  action: #selector(toggleLoginItem), keyEquivalent: "")
@@ -627,6 +668,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         if !config.cleanupEnabled {
             cleanupLine.title = "AI cleanup: off (raw transcripts)"
+        } else if config.cleanupEngine == "apple" {
+            cleanupLine.title = AppleCleaner.isAvailable
+                ? "AI cleanup: Apple on-device"
+                : "AI cleanup: Apple engine \(AppleCleaner.availabilityDescription)"
         } else if ollamaUp && ollamaHasModel {
             cleanupLine.title = "AI cleanup: \(config.llmModel)"
         } else if ollamaUp {
@@ -634,6 +679,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else {
             cleanupLine.title = "AI cleanup: Ollama not reachable"
         }
+        engineOllamaItem.title = "Local model (\(config.llmModel))"
+        engineOllamaItem.state = config.cleanupEngine == "ollama" ? .on : .off
+        let appleAvailable = AppleCleaner.isAvailable
+        engineAppleItem.isEnabled = appleAvailable
+        engineAppleItem.state = config.cleanupEngine == "apple" ? .on : .off
+        engineAppleItem.title = appleAvailable
+            ? "Apple on-device (Foundation Models)"
+            : "Apple on-device (\(AppleCleaner.availabilityDescription))"
 
         axItem.isHidden = axGranted
         micItem.isHidden = micGranted
@@ -643,6 +696,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     // MARK: - Menu actions
+
+    @objc private func selectEngineOllama() { setEngine("ollama") }
+    @objc private func selectEngineApple() { setEngine("apple") }
+
+    private func setEngine(_ engine: String) {
+        guard config.cleanupEngine != engine else { return }
+        config.cleanupEngine = engine
+        config.save()
+        Log.write("cleanup engine: \(engine)")
+        if engine == "apple" {
+            Task {
+                await ollama.unload()
+                await MainActor.run { self.refreshMenuState() }
+            }
+        } else {
+            Task { await self.ensureOllama() }
+        }
+        refreshMenuState()
+    }
 
     @objc private func toggleCleanup() {
         config.cleanupEnabled.toggle()

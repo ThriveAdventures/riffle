@@ -4,6 +4,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# The Apple cleanup engine uses FoundationModels macros, which need the full
+# Xcode toolchain (the Command Line Tools lack the macro plugin).
+if [ -d /Applications/Xcode.app ]; then
+  export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+fi
+
 swift build -c release
 
 DEST="/Applications"

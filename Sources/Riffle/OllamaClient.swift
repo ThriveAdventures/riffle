@@ -42,6 +42,17 @@ final class OllamaClient {
         Log.write("ollama: preloaded \(model)")
     }
 
+    // Release the model's memory (switching to the Apple engine).
+    func unload() async {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/generate"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = 30
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["model": model, "keep_alive": 0])
+        _ = try? await URLSession.shared.data(for: req)
+        Log.write("ollama: unloaded \(model)")
+    }
+
     func cleanup(transcript: String, appName: String?, dictionary: [String]) async throws -> String {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/chat"))
         req.httpMethod = "POST"

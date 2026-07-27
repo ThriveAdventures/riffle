@@ -8,6 +8,10 @@ if let idx = CommandLine.arguments.firstIndex(of: "--selftest"),
    CommandLine.arguments.count > idx + 1 {
     exit(runSelfTest(wavPath: CommandLine.arguments[idx + 1]))
 }
+if let idx = CommandLine.arguments.firstIndex(of: "--appletest"),
+   CommandLine.arguments.count > idx + 1 {
+    exit(runAppleTest(raw: CommandLine.arguments[idx + 1]))
+}
 if let idx = CommandLine.arguments.firstIndex(of: "--cleantest"),
    CommandLine.arguments.count > idx + 1 {
     let app = CommandLine.arguments.count > idx + 2 ? CommandLine.arguments[idx + 2] : nil

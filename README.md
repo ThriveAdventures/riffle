@@ -112,6 +112,7 @@ Config lives at `~/Library/Application Support/Riffle/config.json`
 | `hotkey` | `fn` | `fn`, `right_command`, or `right_option` |
 | `language` | `en` | Whisper language code, or `auto` for multilingual |
 | `cleanup_enabled` | `true` | LLM pass on or off (also in the menu) |
+| `cleanup_engine` | `ollama` | `ollama` or `apple` (Foundation Models on-device, macOS 26 with Apple Intelligence; also in the menu). Apple mode needs no downloads and frees the Ollama model's memory, with simpler cleanups |
 | `llm_model` | `qwen2.5:7b` | any Ollama model tag |
 | `dictionary` | examples | your names and jargon, spelled correctly |
 | `replacements` | `[]` | forced find-and-replace after the LLM, e.g. `{"find": "btw", "replace": "by the way"}` (case-insensitive, whole-word) |

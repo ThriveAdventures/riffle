@@ -12,6 +12,7 @@ struct RiffleConfig: Codable {
     var hotkey = "fn"                       // fn | right_command | right_option
     var language = "en"                     // whisper language code, or "auto"
     var cleanupEnabled = true
+    var cleanupEngine = "ollama"            // ollama | apple (Foundation Models)
     var llmModel = "qwen2.5:7b"
     var ollamaUrl = "http://127.0.0.1:11434"
     var whisperPort = 12391
@@ -34,6 +35,7 @@ struct RiffleConfig: Codable {
         case hotkey
         case language
         case cleanupEnabled = "cleanup_enabled"
+        case cleanupEngine = "cleanup_engine"
         case llmModel = "llm_model"
         case ollamaUrl = "ollama_url"
         case whisperPort = "whisper_port"
@@ -61,6 +63,7 @@ struct RiffleConfig: Codable {
         hotkey = dec(.hotkey, d.hotkey)
         language = dec(.language, d.language)
         cleanupEnabled = dec(.cleanupEnabled, d.cleanupEnabled)
+        cleanupEngine = dec(.cleanupEngine, d.cleanupEngine)
         llmModel = dec(.llmModel, d.llmModel)
         ollamaUrl = dec(.ollamaUrl, d.ollamaUrl)
         whisperPort = dec(.whisperPort, d.whisperPort)

@@ -60,6 +60,32 @@ func runEditTest(text: String, instruction: String) -> Int32 {
     return code
 }
 
+// Headless Apple engine check: riffle --appletest "raw transcript"
+func runAppleTest(raw: String) -> Int32 {
+    let semaphore = DispatchSemaphore(value: 0)
+    var code: Int32 = 1
+    Task {
+        defer { semaphore.signal() }
+        print("foundation models: \(AppleCleaner.availabilityDescription)")
+        guard AppleCleaner.isAvailable else { return }
+        let config = RiffleConfig.load()
+        do {
+            let t0 = Date()
+            let cleaned = try await AppleCleaner.cleanup(transcript: raw, appName: "Messages",
+                                                         dictionary: config.dictionary)
+            let ms = Int(Date().timeIntervalSince(t0) * 1000)
+            print("raw model output: \(cleaned)")
+            let result = TextCleanup.guardrail(raw: TextCleanup.basicTidy(raw), cleaned: cleaned)
+            print("after guardrail (\(ms) ms, llm=\(result.1)): \(result.0)")
+            code = 0
+        } catch {
+            print("FAIL: \(error.localizedDescription)")
+        }
+    }
+    semaphore.wait()
+    return code
+}
+
 // Visual check: riffle --hudtest [output-prefix]
 // Cycles the HUD through listening, processing, and flash states with a
 // synthetic level signal. With an output prefix, captures its own window
