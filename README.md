@@ -6,6 +6,8 @@ and types the result into whatever field has focus.
 
 No cloud. No subscription. No account. Audio and text never leave your Mac.
 
+![Riffle listening, transcribing, and inserting](logos/demo.gif)
+
 Riffle is a free alternative to subscription dictation tools like Wispr Flow,
 built for people who want the same "speak messy, get clean text" experience
 without sending their voice to someone else's servers.

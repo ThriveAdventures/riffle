@@ -95,15 +95,23 @@ import AppKit
 import ImageIO
 import UniformTypeIdentifiers
 
-func runHudTest(capturePrefix: String?) -> Never {
+func runHudTest(capturePrefix: String?, framesDir: String? = nil) -> Never {
     let app = NSApplication.shared
     app.setActivationPolicy(.accessory)
     let hud = HUD()
     let icon = NSWorkspace.shared.icon(forFile: "/Applications/Riffle.app")
     hud.showListening(handsFree: false, appIcon: icon, prime: true)
     var t: Double = 0
+    var frame = 0
+    if let framesDir {
+        try? FileManager.default.createDirectory(atPath: framesDir, withIntermediateDirectories: true)
+    }
     Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
         t += 0.05
+        if let framesDir, Int(round(t * 20)) % 2 == 0 {
+            frame += 1
+            captureWindow(hud.testWindow, to: String(format: "%@/frame-%03d.png", framesDir, frame))
+        }
         var bands = [Float](repeating: 0, count: 12)
         for b in 0..<12 {
             bands[b] = Float(abs(sin(t * 2.9 + Double(b) * 0.65)) * (0.25 + 0.6 * abs(sin(t * 1.4))))
