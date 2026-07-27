@@ -32,6 +32,9 @@ final class AudioRecorder {
     private let fftSize = 2048
     private let fftSetup = vDSP_create_fftsetup(11, FFTRadix(kFFTRadix2))
     private var hannWindow = [Float](repeating: 0, count: 2048)
+    // Adaptive ceiling: bars scale relative to the session's own loudness,
+    // so no fixed threshold can peg them regardless of mic or gain.
+    private var dbCeiling: Float = -30
 
     init() {
         vDSP_hann_window(&hannWindow, vDSP_Length(fftSize), Int32(vDSP_HANN_NORM))
@@ -112,6 +115,7 @@ final class AudioRecorder {
         graceTimer?.invalidate()
         queue.sync { samples.removeAll(keepingCapacity: true) }
         autoStopFired = false
+        dbCeiling = -30
 
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
@@ -175,7 +179,7 @@ final class AudioRecorder {
             }
         }
         let bandCount = 12
-        var bands = [Float](repeating: 0, count: bandCount)
+        var dbs = [Float](repeating: -80, count: bandCount)
         let fMin: Float = 100, fMax: Float = 6000
         let binHz = Float(nativeRate) / Float(fftSize)
         for b in 0..<bandCount {
@@ -186,11 +190,18 @@ final class AudioRecorder {
             var sum: Float = 0
             for i in i0..<i1 { sum += mags[i] }
             let mean = sum / Float(i1 - i0)
-            let db = 10 * log10(max(mean, 1e-12))
-            let tilt = 0.9 + 0.35 * Float(b) / Float(bandCount - 1)
-            // Softer gain plus mild compression: speech should dance in the
-            // middle of the lane and only real peaks should reach the top.
-            bands[b] = min(1, pow(max(0, (db + 56) / 46), 1.25) * tilt)
+            dbs[b] = 10 * log10(max(mean, 1e-12))
+        }
+        // Ceiling rides the loudest band and releases slowly; each bar is
+        // its distance below that ceiling within a 28 dB window. The meter
+        // calibrates itself to the speaker within a second.
+        let frameMax = dbs.max() ?? -80
+        dbCeiling = max(frameMax, max(dbCeiling - 0.35, -45))
+        var bands = [Float](repeating: 0, count: bandCount)
+        for b in 0..<bandCount {
+            let tilt = 0.92 + 0.3 * Float(b) / Float(bandCount - 1)
+            let rel = (dbs[b] - (dbCeiling - 28)) / 28
+            bands[b] = min(1, pow(max(0, rel), 1.15) * tilt)
         }
         DispatchQueue.main.async { self.spectrumHandler?(bands) }
     }

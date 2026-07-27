@@ -8,8 +8,8 @@ final class HUD {
     // Exposed for --hudtest self-capture only.
     var testWindow: NSWindow { panel }
     private let label = NSTextField(labelWithString: "")
-    private let dot = NSView(frame: NSRect(x: 20, y: 19, width: 10, height: 10))
-    private let spinner = NSProgressIndicator(frame: NSRect(x: 17, y: 16, width: 16, height: 16))
+    private let glowView = NSView()
+    private let spinner = NSProgressIndicator(frame: NSRect(x: 18, y: 16, width: 16, height: 16))
     private let appIconView = NSImageView(frame: NSRect(x: 140, y: 14, width: 20, height: 20))
     private let bars = LevelBarsView(frame: NSRect(x: 172, y: 13, width: 62, height: 22))
     private var hideTimer: Timer?
@@ -74,9 +74,18 @@ final class HUD {
         sheen.layer?.addSublayer(sheenLayer)
         chrome.addSubview(sheen)
 
-        dot.wantsLayer = true
-        dot.layer?.cornerRadius = 5
-        dot.layer?.backgroundColor = NSColor.systemRed.cgColor
+        // State is a soft glow on the bubble itself: a colored rim whose
+        // blur blooms inward (the outward half is clipped by the chrome).
+        glowView.frame = rect
+        glowView.autoresizingMask = [.width, .height]
+        glowView.wantsLayer = true
+        glowView.layer?.cornerRadius = 24
+        glowView.layer?.borderWidth = 2
+        glowView.layer?.masksToBounds = false
+        glowView.layer?.shadowOffset = .zero
+        glowView.layer?.shadowRadius = 9
+        glowView.layer?.shadowOpacity = 0
+        glowView.isHidden = true
 
         spinner.style = .spinning
         spinner.controlSize = .small
@@ -92,7 +101,7 @@ final class HUD {
         appIconView.autoresizingMask = []
         appIconView.imageScaling = .scaleProportionallyUpOrDown
         appIconView.isHidden = true
-        chrome.addSubview(dot)
+        chrome.addSubview(glowView)
         chrome.addSubview(spinner)
         chrome.addSubview(label)
         chrome.addSubview(appIconView)
@@ -118,62 +127,85 @@ final class HUD {
         hideTimer = nil
         spinner.stopAnimation(nil)
         spinner.isHidden = true
-        dot.isHidden = false
-        dot.layer?.backgroundColor = (edit ? NSColor.systemPurple : NSColor.systemRed).cgColor
-        startPulse()
+        setGlow(edit ? .systemPurple : .systemRed, pulse: true)
         bars.isHidden = false
         bars.startAnimating()
         appIconView.image = appIcon
         appIconView.isHidden = (appIcon == nil)
-        label.frame = NSRect(x: 40, y: 15, width: 96, height: 18)
         if edit {
             label.stringValue = handsFree ? "Tap to stop" : "Editing"
         } else {
             label.stringValue = handsFree ? "Tap to stop" : "Listening"
         }
-        // Explicit left-to-right layout from the measured text, so the icon
-        // and meter can never collide with the label at any width.
+        // Explicit left-to-right layout with uniform 10pt gaps between the
+        // label, app icon, and meter.
         let font = NSFont.systemFont(ofSize: 13, weight: .medium)
         let labelW = ceil((label.stringValue as NSString).size(withAttributes: [.font: font]).width) + 6
-        label.frame = NSRect(x: 40, y: 15, width: labelW, height: 18)
-        var xCursor: CGFloat = 40 + labelW + 12
+        label.frame = NSRect(x: 20, y: 15, width: labelW, height: 18)
+        var xCursor: CGFloat = 20 + labelW + 10
         if appIcon != nil {
             appIconView.frame = NSRect(x: xCursor, y: 14, width: 20, height: 20)
-            xCursor += 28
+            xCursor += 30
         }
         bars.frame = NSRect(x: xCursor, y: 13, width: 62, height: 22)
         if prime { bars.prime() }
         present(width: xCursor + 62 + 20)
     }
 
+    private func setGlow(_ color: NSColor?, pulse: Bool) {
+        guard let color else {
+            glowView.isHidden = true
+            glowView.layer?.removeAnimation(forKey: "glowPulse")
+            return
+        }
+        glowView.isHidden = false
+        glowView.layer?.borderColor = color.withAlphaComponent(0.75).cgColor
+        glowView.layer?.shadowColor = color.cgColor
+        glowView.layer?.shadowOpacity = 0.9
+        glowView.layer?.removeAnimation(forKey: "glowPulse")
+        if pulse {
+            let anim = CABasicAnimation(keyPath: "opacity")
+            anim.fromValue = 1.0
+            anim.toValue = 0.45
+            anim.duration = 0.8
+            anim.autoreverses = true
+            anim.repeatCount = .infinity
+            anim.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            glowView.layer?.add(anim, forKey: "glowPulse")
+        } else {
+            glowView.layer?.opacity = 1
+        }
+    }
+
     func showProcessing() {
         hideTimer?.invalidate()
         hideTimer = nil
-        stopPulse()
-        dot.isHidden = true
+        setGlow(nil, pulse: false)
         bars.isHidden = true
         bars.stopAnimating()
         appIconView.isHidden = true
         spinner.isHidden = false
         spinner.startAnimation(nil)
-        label.frame = NSRect(x: 40, y: 15, width: 196, height: 18)
         label.stringValue = "Polishing"
-        present(width: contentWidth(for: label.stringValue, meter: false, icon: false))
+        let font = NSFont.systemFont(ofSize: 13, weight: .medium)
+        let labelW = ceil((label.stringValue as NSString).size(withAttributes: [.font: font]).width) + 6
+        label.frame = NSRect(x: 42, y: 15, width: labelW, height: 18)
+        present(width: 42 + labelW + 20)
     }
 
     func flash(_ message: String, ok: Bool) {
         hideTimer?.invalidate()
-        stopPulse()
         spinner.stopAnimation(nil)
         spinner.isHidden = true
         bars.isHidden = true
         bars.stopAnimating()
         appIconView.isHidden = true
-        dot.isHidden = false
-        dot.layer?.backgroundColor = (ok ? NSColor.systemGreen : NSColor.systemOrange).cgColor
-        label.frame = NSRect(x: 40, y: 15, width: 196, height: 18)
+        setGlow(ok ? .systemGreen : .systemOrange, pulse: false)
         label.stringValue = message
-        present(width: contentWidth(for: message, meter: false, icon: false))
+        let font = NSFont.systemFont(ofSize: 13, weight: .medium)
+        let labelW = ceil((message as NSString).size(withAttributes: [.font: font]).width) + 6
+        label.frame = NSRect(x: 20, y: 15, width: min(labelW, 320), height: 18)
+        present(width: min(labelW, 320) + 40)
         hideTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
             self?.hide()
         }
@@ -197,19 +229,7 @@ final class HUD {
         })
     }
 
-    // Width hugs the content per state; changes animate centered, so the
-    // pill visibly collapses into the small "Polishing" capsule and expands
-    // back for the meter.
-    private func contentWidth(for text: String, meter: Bool, icon: Bool) -> CGFloat {
-        let font = NSFont.systemFont(ofSize: 13, weight: .medium)
-        let labelW = ceil((text as NSString).size(withAttributes: [.font: font]).width)
-        var w: CGFloat = 40 + labelW + 20
-        if meter {
-            w = 40 + labelW + 12 + (icon ? 28 : 0) + 62 + 20
-        }
-        return min(max(w, 120), 360)
-    }
-
+    // Width hugs the content per state; changes animate centered.
     private func present(width: CGFloat) {
         guard let screen = NSScreen.main else { return }
         let f = screen.visibleFrame
@@ -250,21 +270,6 @@ final class HUD {
         })
     }
 
-    private func startPulse() {
-        let pulse = CABasicAnimation(keyPath: "opacity")
-        pulse.fromValue = 1.0
-        pulse.toValue = 0.35
-        pulse.duration = 0.7
-        pulse.autoreverses = true
-        pulse.repeatCount = .infinity
-        pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        dot.layer?.add(pulse, forKey: "pulse")
-    }
-
-    private func stopPulse() {
-        dot.layer?.removeAnimation(forKey: "pulse")
-        dot.layer?.opacity = 1
-    }
 }
 
 // Winamp-spirited 12-band spectrum analyzer: real FFT bands in, per-band
@@ -352,8 +357,12 @@ final class LevelBarsView: NSView {
             let v = CGFloat(values[i])
             let x = CGFloat(i) * (barWidth + gap)
             let barHeight = max(2.5, v * h * 0.85)
-            let alpha = 0.38 + 0.5 * v
-            NSColor(calibratedRed: 0.78, green: 0.93, blue: 1.0, alpha: alpha).setFill()
+            // Brand ramp from the icon: teal when quiet, ice white when loud.
+            let alpha = 0.5 + 0.5 * v
+            NSColor(calibratedRed: 0.31 + 0.60 * v,
+                    green: 0.72 + 0.25 * v,
+                    blue: 0.81 + 0.19 * v,
+                    alpha: alpha).setFill()
             let rect = NSRect(x: x, y: (h - barHeight) / 2, width: barWidth, height: barHeight)
             NSBezierPath(roundedRect: rect, xRadius: 1.5, yRadius: 1.5).fill()
 
