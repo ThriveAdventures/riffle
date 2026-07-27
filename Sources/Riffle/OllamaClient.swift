@@ -91,6 +91,58 @@ final class OllamaClient {
         return r.message.content
     }
 
+    // Meeting summary over a long attributed transcript. Needs a large
+    // context window, so this always runs on the Ollama engine.
+    func summarizeMeeting(transcript: String, minutes: Int) async throws -> String {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/chat"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = 600
+        let system = """
+You summarize meeting transcripts. The transcript labels the local speaker "You" and everyone else "Them", with timestamps. Write markdown with exactly these sections:
+
+## TLDR
+Two to four sentences capturing what the meeting was about and where it landed.
+
+## Decisions
+Bullet list of decisions actually made. Write "None." if there were none.
+
+## Action items
+Bullet list in the form "Owner: task (deadline if stated)". Only include items actually agreed. Write "None." if there were none.
+
+## Notes
+Three to eight bullets of other points worth remembering.
+
+Rules: use only information from the transcript, never invent names, numbers, or commitments. Keep the speaker's language (summarize French meetings in French). Never use em-dashes.
+"""
+        let payload: [String: Any] = [
+            "model": model,
+            "stream": false,
+            "keep_alive": -1,
+            "options": [
+                "temperature": 0.2,
+                "num_ctx": 32768,
+                "num_predict": 2500,
+            ],
+            "messages": [
+                ["role": "system", "content": system],
+                ["role": "user", "content": "Meeting length: \(minutes) minutes.\n\nTRANSCRIPT:\n\(transcript)"],
+            ],
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
+            throw NSError(domain: "Riffle", code: 32,
+                          userInfo: [NSLocalizedDescriptionKey: "ollama returned HTTP \(code)"])
+        }
+        struct ChatResponse: Decodable {
+            struct Message: Decodable { let content: String }
+            let message: Message
+        }
+        return try JSONDecoder().decode(ChatResponse.self, from: data).message.content
+    }
+
     // Edit mode: apply a spoken instruction to a piece of selected text.
     func edit(text: String, instruction: String, dictionary: [String]) async throws -> String {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/chat"))

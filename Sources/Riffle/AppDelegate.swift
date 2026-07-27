@@ -67,12 +67,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var axPollTimer: Timer?
     private var healthTimer: Timer?
 
+    // Meeting recording (macOS 14.2+). Stored untyped so the class itself
+    // stays available on the 13.0 floor.
+    private var meetingBox: AnyObject?
+    private var meetingActive = false
+    private var meetingStartedAt = Date.distantPast
+
     private var hintItem: NSMenuItem!
     private var whisperLine: NSMenuItem!
     private var cleanupLine: NSMenuItem!
     private var cleanupToggle: NSMenuItem!
     private var engineOllamaItem: NSMenuItem!
     private var engineAppleItem: NSMenuItem!
+    private var meetingToggle: NSMenuItem!
     private var loginToggle: NSMenuItem!
     private var axItem: NSMenuItem!
     private var micItem: NSMenuItem!
@@ -121,6 +128,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        if #available(macOS 14.2, *), let recorder = meetingBox as? MeetingRecorder {
+            _ = recorder.stop()
+        }
         whisper?.shutdown()
         spawnedOllama?.terminate()
         Log.write("riffle stopped")
@@ -501,8 +511,103 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             icon(.recording)
         } else if processingCount > 0 {
             icon(.processing)
+        } else if meetingActive {
+            statusItem.button?.image = Self.menuBarMark
+            statusItem.button?.contentTintColor = .systemBlue
         } else {
             icon(.idle)
+        }
+    }
+
+    // MARK: - Meeting recording
+
+    @objc private func toggleMeeting() {
+        guard #available(macOS 14.2, *) else { return }
+        if meetingActive {
+            stopMeeting()
+        } else {
+            startMeeting()
+        }
+    }
+
+    @available(macOS 14.2, *)
+    private func startMeeting() {
+        let recorder = MeetingRecorder()
+        do {
+            try recorder.start()
+        } catch {
+            Log.write("meeting: start failed: \(error.localizedDescription)")
+            hud.flash("Meeting recording failed, check permissions", ok: false)
+            let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AudioCapture")!
+            NSWorkspace.shared.open(url)
+            return
+        }
+        meetingBox = recorder
+        meetingActive = true
+        meetingStartedAt = Date()
+        updateIcon()
+        refreshMenuState()
+        hud.flash("Meeting recording started", ok: true)
+        playSound("Pop")
+    }
+
+    @available(macOS 14.2, *)
+    private func stopMeeting() {
+        guard let recorder = meetingBox as? MeetingRecorder else { return }
+        meetingBox = nil
+        meetingActive = false
+        updateIcon()
+        playSound("Tink")
+        guard let tracks = recorder.stop() else {
+            hud.flash("Meeting produced no audio", ok: false)
+            refreshMenuState()
+            return
+        }
+        hud.flash("Transcribing meeting, this can take a bit", ok: true)
+        Task { await self.processMeeting(tracks) }
+        refreshMenuState()
+    }
+
+    @available(macOS 14.2, *)
+    private func processMeeting(_ tracks: MeetingRecorder.Tracks) async {
+        var micSegments: [WhisperService.Segment] = []
+        var systemSegments: [WhisperService.Segment] = []
+        do {
+            micSegments = try await whisper.transcribeSegments(wavURL: tracks.micWav)
+        } catch {
+            Log.write("meeting: mic transcription failed: \(error.localizedDescription)")
+        }
+        do {
+            systemSegments = try await whisper.transcribeSegments(wavURL: tracks.systemWav)
+        } catch {
+            Log.write("meeting: system transcription failed: \(error.localizedDescription)")
+        }
+        try? FileManager.default.removeItem(at: tracks.micWav)
+        try? FileManager.default.removeItem(at: tracks.systemWav)
+
+        guard !micSegments.isEmpty || !systemSegments.isEmpty else {
+            await MainActor.run { hud.flash("Meeting had no transcribable speech", ok: false) }
+            return
+        }
+        let transcript = MeetingNotes.mergedTranscript(mic: micSegments, system: systemSegments)
+
+        var summary: String?
+        if await ollama.isUp(), await ollama.hasModel() {
+            summary = try? await ollama.summarizeMeeting(transcript: transcript,
+                                                         minutes: max(1, Int(tracks.seconds / 60)))
+        }
+
+        let md = MeetingNotes.build(transcript: transcript, seconds: tracks.seconds, summary: summary)
+        do {
+            let url = try MeetingNotes.save(md)
+            Log.write("meeting: notes saved to \(url.path)")
+            await MainActor.run {
+                hud.flash("Meeting notes saved", ok: true)
+                NSWorkspace.shared.open(url)
+            }
+        } catch {
+            Log.write("meeting: save failed: \(error.localizedDescription)")
+            await MainActor.run { hud.flash("Could not save meeting notes", ok: false) }
         }
     }
 
@@ -613,6 +718,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         engineParent.submenu = engineMenu
         menu.addItem(engineParent)
 
+        meetingToggle = NSMenuItem(title: "Start meeting recording",
+                                   action: #selector(toggleMeeting), keyEquivalent: "")
+        meetingToggle.target = self
+        menu.addItem(meetingToggle)
+
         loginToggle = NSMenuItem(title: "Launch at login",
                                  action: #selector(toggleLoginItem), keyEquivalent: "")
         loginToggle.target = self
@@ -688,6 +798,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ? "Apple on-device (Foundation Models)"
             : "Apple on-device (\(AppleCleaner.availabilityDescription))"
 
+        if meetingActive {
+            let elapsed = Int(Date().timeIntervalSince(meetingStartedAt))
+            meetingToggle.title = String(format: "Stop meeting recording (%d:%02d)", elapsed / 60, elapsed % 60)
+        } else {
+            meetingToggle.title = "Start meeting recording"
+        }
+        if #available(macOS 14.2, *) {
+            meetingToggle.isEnabled = true
+        } else {
+            meetingToggle.isEnabled = false
+            meetingToggle.title = "Meeting recording needs macOS 14.2+"
+        }
         axItem.isHidden = axGranted
         micItem.isHidden = micGranted
         cleanupToggle.state = config.cleanupEnabled ? .on : .off

@@ -244,6 +244,14 @@ final class AudioRecorder {
         }
     }
 
+    static func resamplePublic(samples: [Float], sourceRate: Double) throws -> Data {
+        try resampleTo16kInt16(samples: samples, sourceRate: sourceRate)
+    }
+
+    static func wavDataPublic(pcm: Data, sampleRate: Int) -> Data {
+        wavData(pcm: pcm, sampleRate: sampleRate)
+    }
+
     private static func resampleTo16kInt16(samples: [Float], sourceRate: Double) throws -> Data {
         func fail(_ message: String) -> NSError {
             NSError(domain: "Riffle", code: 11, userInfo: [NSLocalizedDescriptionKey: message])

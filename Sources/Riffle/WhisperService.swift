@@ -125,12 +125,57 @@ final class WhisperService {
         }
     }
 
+    struct Segment: Decodable {
+        let start: Double
+        let end: Double
+        let text: String
+    }
+
+    // Timestamped transcription for meeting tracks.
+    func transcribeSegments(wavURL: URL) async throws -> [Segment] {
+        let data = try await inference(wavURL: wavURL, responseFormat: "verbose_json")
+        struct VerboseResponse: Decodable {
+            struct Seg: Decodable {
+                struct Offsets: Decodable { let from: Double?; let to: Double? }
+                let start: Double?
+                let end: Double?
+                let offsets: Offsets?
+                let text: String
+            }
+            let segments: [Seg]?
+        }
+        let r = try JSONDecoder().decode(VerboseResponse.self, from: data)
+        return (r.segments ?? []).compactMap { seg in
+            let start = seg.start ?? (seg.offsets?.from).map { $0 / 1000 }
+            let end = seg.end ?? (seg.offsets?.to).map { $0 / 1000 }
+            guard let s = start, let e = end else { return nil }
+            let text = seg.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { return nil }
+            return Segment(start: s, end: e, text: text)
+        }
+    }
+
     func transcribe(wavURL: URL) async throws -> String {
+        let data = try await inference(wavURL: wavURL, responseFormat: "json")
+        struct InferenceResponse: Decodable {
+            let text: String?
+            let error: String?
+        }
+        let r = try JSONDecoder().decode(InferenceResponse.self, from: data)
+        if let e = r.error, !e.isEmpty {
+            throw NSError(domain: "Riffle", code: 21,
+                          userInfo: [NSLocalizedDescriptionKey: "whisper-server error: \(e)"])
+        }
+        restarts = 0
+        return (r.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func inference(wavURL: URL, responseFormat: String) async throws -> Data {
         let boundary = "riffle-\(UUID().uuidString)"
         var req = URLRequest(url: baseURL.appendingPathComponent("inference"))
         req.httpMethod = "POST"
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        req.timeoutInterval = 120
+        req.timeoutInterval = 600  // an hour of audio takes a while
 
         var body = Data()
         func field(_ name: String, _ value: String) {
@@ -138,7 +183,7 @@ final class WhisperService {
         }
         field("temperature", "0.0")
         field("temperature_inc", "0.2")
-        field("response_format", "json")
+        field("response_format", responseFormat)
         let fileData = try Data(contentsOf: wavURL)
         body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"audio.wav\"\r\nContent-Type: audio/wav\r\n\r\n".data(using: .utf8)!)
         body.append(fileData)
@@ -151,17 +196,6 @@ final class WhisperService {
             throw NSError(domain: "Riffle", code: 20,
                           userInfo: [NSLocalizedDescriptionKey: "whisper-server returned HTTP \(code)"])
         }
-
-        struct InferenceResponse: Decodable {
-            let text: String?
-            let error: String?
-        }
-        let r = try JSONDecoder().decode(InferenceResponse.self, from: data)
-        if let e = r.error, !e.isEmpty {
-            throw NSError(domain: "Riffle", code: 21,
-                          userInfo: [NSLocalizedDescriptionKey: "whisper-server error: \(e)"])
-        }
-        restarts = 0
-        return (r.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return data
     }
 }

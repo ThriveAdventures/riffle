@@ -94,6 +94,18 @@ Two one-time checks:
   hourglass (processing)
 - A small HUD near the bottom of the screen shows live input level and status
 
+### Meeting recording (macOS 14.2+)
+
+Menu: Start meeting recording. Riffle captures your microphone and the
+system audio (the other side of the call) as two tracks; the first use
+asks for the System Audio Recording permission. Stop from the same menu
+and Riffle transcribes both tracks with timestamps, labels them You and
+Them, writes a local summary (TLDR, decisions, action items, notes), and
+saves everything as markdown in ~/Documents/Meetings, opening it when
+done. The menu bar mark turns blue while a meeting is recording. Long
+meetings take a minute or two to process. Recording other people carries
+consent obligations; announce it like you would any recording.
+
 ### Edit mode
 
 Select text anywhere, hold `shift+fn`, and speak an instruction:

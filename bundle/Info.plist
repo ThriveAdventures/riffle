@@ -15,9 +15,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.4.0</string>
+	<string>1.5.0</string>
 	<key>CFBundleVersion</key>
-	<string>5</string>
+	<string>6</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
 	<key>LSUIElement</key>
@@ -26,6 +26,8 @@
 	<true/>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>Riffle records system audio only while you run Record Meeting, so the other side of a call can be transcribed and summarized locally. Nothing leaves this Mac.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Riffle records your voice while you hold the dictation hotkey, transcribes it on this Mac, and types the result into the active app. Audio never leaves this machine.</string>
 	<key>NSHumanReadableCopyright</key>
