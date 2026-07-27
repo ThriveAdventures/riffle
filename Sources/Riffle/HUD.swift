@@ -80,10 +80,10 @@ final class HUD {
         glowView.autoresizingMask = [.width, .height]
         glowView.wantsLayer = true
         glowView.layer?.cornerRadius = 24
-        glowView.layer?.borderWidth = 2
+        glowView.layer?.borderWidth = 1.5
         glowView.layer?.masksToBounds = false
         glowView.layer?.shadowOffset = .zero
-        glowView.layer?.shadowRadius = 9
+        glowView.layer?.shadowRadius = 15
         glowView.layer?.shadowOpacity = 0
         glowView.isHidden = true
 
@@ -130,26 +130,71 @@ final class HUD {
         setGlow(edit ? .systemPurple : .systemRed, pulse: true)
         bars.isHidden = false
         bars.startAnimating()
-        appIconView.image = appIcon
         appIconView.isHidden = (appIcon == nil)
         if edit {
             label.stringValue = handsFree ? "Tap to stop" : "Editing"
         } else {
             label.stringValue = handsFree ? "Tap to stop" : "Listening"
         }
-        // Explicit left-to-right layout with uniform 10pt gaps between the
-        // label, app icon, and meter.
+        // Explicit left-to-right layout with uniform 10pt OPTICAL gaps: the
+        // gap is measured from the last text glyph, and the app icon is
+        // trimmed of its built-in transparent margins so its visible edge
+        // is its frame edge.
         let font = NSFont.systemFont(ofSize: 13, weight: .medium)
-        let labelW = ceil((label.stringValue as NSString).size(withAttributes: [.font: font]).width) + 6
-        label.frame = NSRect(x: 20, y: 15, width: labelW, height: 18)
-        var xCursor: CGFloat = 20 + labelW + 10
-        if appIcon != nil {
+        let textW = ceil((label.stringValue as NSString).size(withAttributes: [.font: font]).width)
+        label.frame = NSRect(x: 20, y: 15, width: textW + 4, height: 18)
+        var xCursor: CGFloat = 20 + textW + 10
+        if let appIcon {
+            appIconView.image = Self.trimmedIcon(appIcon, side: 20)
             appIconView.frame = NSRect(x: xCursor, y: 14, width: 20, height: 20)
             xCursor += 30
         }
         bars.frame = NSRect(x: xCursor, y: 13, width: 62, height: 22)
         if prime { bars.prime() }
         present(width: xCursor + 62 + 20)
+    }
+
+    // App icons ship with transparent padding around the tile (roughly a
+    // tenth of the canvas per side), which makes visually equal spacing
+    // impossible if the frame is treated as the edge. Crop to the opaque
+    // bounding box.
+    private static func trimmedIcon(_ image: NSImage, side: CGFloat) -> NSImage {
+        let px = 48
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: px, pixelsHigh: px,
+                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                                         isPlanar: false, colorSpaceName: .deviceRGB,
+                                         bytesPerRow: 0, bitsPerPixel: 0) else { return image }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        image.draw(in: NSRect(x: 0, y: 0, width: px, height: px))
+        NSGraphicsContext.restoreGraphicsState()
+
+        var minX = px, minY = px, maxX = -1, maxY = -1
+        for y in 0..<px {
+            for x in 0..<px {
+                if let c = rep.colorAt(x: x, y: y), c.alphaComponent > 0.06 {
+                    if x < minX { minX = x }
+                    if x > maxX { maxX = x }
+                    if y < minY { minY = y }
+                    if y > maxY { maxY = y }
+                }
+            }
+        }
+        guard maxX >= minX, maxY >= minY else { return image }
+
+        // colorAt uses a top-left origin; image space is bottom-left.
+        let sx = image.size.width / CGFloat(px)
+        let sy = image.size.height / CGFloat(px)
+        let source = NSRect(x: CGFloat(minX) * sx,
+                            y: CGFloat(px - 1 - maxY) * sy,
+                            width: CGFloat(maxX - minX + 1) * sx,
+                            height: CGFloat(maxY - minY + 1) * sy)
+        let out = NSImage(size: NSSize(width: side, height: side))
+        out.lockFocus()
+        image.draw(in: NSRect(x: 0, y: 0, width: side, height: side),
+                   from: source, operation: .sourceOver, fraction: 1)
+        out.unlockFocus()
+        return out
     }
 
     private func setGlow(_ color: NSColor?, pulse: Bool) {
@@ -159,9 +204,9 @@ final class HUD {
             return
         }
         glowView.isHidden = false
-        glowView.layer?.borderColor = color.withAlphaComponent(0.75).cgColor
+        glowView.layer?.borderColor = color.withAlphaComponent(0.45).cgColor
         glowView.layer?.shadowColor = color.cgColor
-        glowView.layer?.shadowOpacity = 0.9
+        glowView.layer?.shadowOpacity = 1.0
         glowView.layer?.removeAnimation(forKey: "glowPulse")
         if pulse {
             let anim = CABasicAnimation(keyPath: "opacity")
