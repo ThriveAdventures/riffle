@@ -55,15 +55,39 @@ enum TextCleanup {
                        "here is the cleaned", "here's the cleaned"] {
             if lower.contains(marker), !rawLower.contains(marker) { return (raw, false) }
         }
+        // Assistant-voice openers: the model answered instead of cleaning.
+        for prefix in ["sure!", "sure,", "sure.", "of course", "certainly",
+                       "great question", "okay, imagine", "alright,", "here's"] {
+            if lower.hasPrefix(prefix), !rawLower.hasPrefix(prefix) { return (raw, false) }
+        }
 
         if raw.count >= 60 {
             let ratio = Double(c.count) / Double(raw.count)
             if ratio < 0.3 || ratio > 2.6 { return (raw, false) }
         }
 
+        // Fabrication guard: cleaned text must be built from the speaker's
+        // own words. Legitimate cleanup removes and reformats; it does not
+        // invent vocabulary. A high share of significant words absent from
+        // the raw transcript means the model wrote its own content.
+        if novelWordRatio(raw: raw, cleaned: c) > 0.45 { return (raw, false) }
+
         c = c.replacingOccurrences(of: " \u{2014} ", with: ", ")
             .replacingOccurrences(of: "\u{2014}", with: ", ")
         return (c, true)
+    }
+
+    static func novelWordRatio(raw: String, cleaned: String) -> Double {
+        func words(_ s: String) -> [String] {
+            s.lowercased()
+                .components(separatedBy: CharacterSet.alphanumerics.inverted)
+                .filter { $0.count >= 4 }
+        }
+        let rawSet = Set(words(raw))
+        let cleanedWords = words(cleaned)
+        guard cleanedWords.count >= 4, rawSet.count >= 3 else { return 0 }
+        let novel = cleanedWords.filter { !rawSet.contains($0) }.count
+        return Double(novel) / Double(cleanedWords.count)
     }
 
     // Deterministic find-and-replace rules from config, applied after the
