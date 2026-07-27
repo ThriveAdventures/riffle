@@ -8,7 +8,7 @@ final class HUD {
     // Exposed for --hudtest self-capture only.
     var testWindow: NSWindow { panel }
     private let label = NSTextField(labelWithString: "")
-    private let glowView = NSView()
+    private let glowView = GlowView(frame: .zero)
     private let spinner = NSProgressIndicator(frame: NSRect(x: 18, y: 16, width: 16, height: 16))
     private let appIconView = NSImageView(frame: NSRect(x: 140, y: 14, width: 20, height: 20))
     private let bars = LevelBarsView(frame: NSRect(x: 172, y: 13, width: 62, height: 22))
@@ -74,17 +74,10 @@ final class HUD {
         sheen.layer?.addSublayer(sheenLayer)
         chrome.addSubview(sheen)
 
-        // State is a soft glow on the bubble itself: a colored rim whose
-        // blur blooms inward (the outward half is clipped by the chrome).
+        // State is a glow on the bubble itself: a defined rim plus a radial
+        // fill that fades from the edges all the way to the pill's center.
         glowView.frame = rect
         glowView.autoresizingMask = [.width, .height]
-        glowView.wantsLayer = true
-        glowView.layer?.cornerRadius = 24
-        glowView.layer?.borderWidth = 1.5
-        glowView.layer?.masksToBounds = false
-        glowView.layer?.shadowOffset = .zero
-        glowView.layer?.shadowRadius = 15
-        glowView.layer?.shadowOpacity = 0
         glowView.isHidden = true
 
         spinner.style = .spinning
@@ -204,9 +197,7 @@ final class HUD {
             return
         }
         glowView.isHidden = false
-        glowView.layer?.borderColor = color.withAlphaComponent(0.45).cgColor
-        glowView.layer?.shadowColor = color.cgColor
-        glowView.layer?.shadowOpacity = 1.0
+        glowView.setColor(color)
         glowView.layer?.removeAnimation(forKey: "glowPulse")
         if pulse {
             let anim = CABasicAnimation(keyPath: "opacity")
@@ -419,5 +410,49 @@ final class LevelBarsView: NSView {
                 NSRect(x: x, y: capY, width: barWidth, height: 1.6).fill()
             }
         }
+    }
+}
+
+// Colored state glow for the pill: a defined rim, a soft bloom, and a
+// radial fill fading from the edges toward the center so the chrome's own
+// dark material survives only in the middle.
+final class GlowView: NSView {
+    private let gradient = CAGradientLayer()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        gradient.type = .radial
+        gradient.startPoint = CGPoint(x: 0.5, y: 0.5)
+        gradient.endPoint = CGPoint(x: 1, y: 1)
+        gradient.cornerRadius = 24
+        gradient.masksToBounds = true
+        layer?.addSublayer(gradient)
+        layer?.cornerRadius = 24
+        layer?.borderWidth = 2.5
+        layer?.masksToBounds = false
+        layer?.shadowOffset = .zero
+        layer?.shadowRadius = 10
+        layer?.shadowOpacity = 0
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        gradient.frame = bounds
+        CATransaction.commit()
+    }
+
+    func setColor(_ color: NSColor) {
+        layer?.borderColor = color.withAlphaComponent(0.75).cgColor
+        layer?.shadowColor = color.cgColor
+        layer?.shadowOpacity = 0.85
+        gradient.colors = [color.withAlphaComponent(0).cgColor,
+                           color.withAlphaComponent(0.08).cgColor,
+                           color.withAlphaComponent(0.30).cgColor]
+        gradient.locations = [0, 0.55, 1]
     }
 }
