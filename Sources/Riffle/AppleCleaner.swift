@@ -52,11 +52,10 @@ enum AppleCleaner {
     static func cleanup(transcript: String, appName: String?, dictionary: [String]) async throws -> String {
         #if canImport(FoundationModels)
         if #available(macOS 26.0, *) {
-            var instructions = OllamaClient.systemPrompt(appName: appName, dictionary: dictionary)
-            instructions += "\n\nExample transcript: \(OllamaClient.exampleInput)"
-            instructions += "\nExample cleaned output: \(OllamaClient.exampleOutput)"
-            instructions += "\n\nExample transcript: \(OllamaClient.exampleInputImperative)"
-            instructions += "\nExample cleaned output: \(OllamaClient.exampleOutputImperative)"
+            // No worked examples here: the small on-device model treats
+            // them as quotable content and can regurgitate them verbatim.
+            // Guided generation already enforces the output shape.
+            let instructions = OllamaClient.systemPrompt(appName: appName, dictionary: dictionary)
             let session = LanguageModelSession(instructions: instructions)
             let response = try await session.respond(
                 to: transcript,

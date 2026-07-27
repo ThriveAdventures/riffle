@@ -66,6 +66,16 @@ enum TextCleanup {
             if ratio < 0.3 || ratio > 2.6 { return (raw, false) }
         }
 
+        // Example-leak tripwire: prompt examples must never reach the
+        // cursor. Reject outright when a distinctive example fragment shows
+        // up in output the speaker's own words cannot explain.
+        for (fragment, anchor) in [("invoice total is $1,300", "invoice"),
+                                   ("due on the 15th", "15th"),
+                                   ("bob's team", "bob"),
+                                   ("explain this to me like i'm five", "explain")] {
+            if lower.contains(fragment), !rawLower.contains(anchor) { return (raw, false) }
+        }
+
         // Fabrication guard: cleaned text must be built from the speaker's
         // own words. Legitimate cleanup removes and reformats; it does not
         // invent vocabulary. A high share of significant words absent from
@@ -85,7 +95,7 @@ enum TextCleanup {
         }
         let rawSet = Set(words(raw))
         let cleanedWords = words(cleaned)
-        guard cleanedWords.count >= 4, rawSet.count >= 3 else { return 0 }
+        guard cleanedWords.count >= 2, rawSet.count >= 2 else { return 0 }
         let novel = cleanedWords.filter { !rawSet.contains($0) }.count
         return Double(novel) / Double(cleanedWords.count)
     }
