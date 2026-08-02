@@ -102,6 +102,20 @@ final class AudioRecorder {
         }
     }
 
+    // Leak watchdog, called periodically from the app's health timer. If
+    // the engine is running while idle with no valid grace timer pending,
+    // some path forgot the shutdown: coreaudiod then holds a display-sleep
+    // assertion indefinitely (this kept a display awake for 89 hours).
+    // Whatever the entry path, this makes the leak self-heal within a
+    // minute.
+    func watchdog() {
+        guard !isRecording, engine.isRunning else { return }
+        if graceTimer == nil || graceTimer?.isValid != true {
+            Log.write("audio: watchdog stopped a leaked engine")
+            engine.stop()
+        }
+    }
+
     private func scheduleGraceStop(after interval: TimeInterval) {
         graceTimer?.invalidate()
         graceTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in

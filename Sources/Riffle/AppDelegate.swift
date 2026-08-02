@@ -120,6 +120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             Task { await self.ensureOllama() }
         }
         healthTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            self?.audio.watchdog()
             self?.refreshHealth()
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
