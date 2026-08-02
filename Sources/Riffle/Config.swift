@@ -26,6 +26,7 @@ struct RiffleConfig: Codable {
     var maxRecordSeconds = 240
     var fun = true                          // occasional emoji in the HUD flashes
     var launchAtLogin = true
+    var micGraceSeconds = 3.0               // how long the mic stays warm after a dictation
     // Seed with a few examples; put your own names, clients, and jargon here.
     var dictionary: [String] = [
         "Kubernetes", "PostgreSQL", "Ollama", "SKU",
@@ -50,6 +51,7 @@ struct RiffleConfig: Codable {
         case maxRecordSeconds = "max_record_seconds"
         case fun
         case launchAtLogin = "launch_at_login"
+        case micGraceSeconds = "mic_grace_seconds"
         case dictionary
         case replacements
     }
@@ -79,6 +81,7 @@ struct RiffleConfig: Codable {
         maxRecordSeconds = dec(.maxRecordSeconds, d.maxRecordSeconds)
         fun = dec(.fun, d.fun)
         launchAtLogin = dec(.launchAtLogin, d.launchAtLogin)
+        micGraceSeconds = dec(.micGraceSeconds, d.micGraceSeconds)
         dictionary = dec(.dictionary, d.dictionary)
         replacements = dec(.replacements, d.replacements)
     }

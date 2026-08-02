@@ -137,6 +137,7 @@ Config lives at `~/Library/Application Support/Riffle/config.json`
 | `history_enabled` | `true` | log dictations to history.jsonl |
 | `fun` | `true` | occasional emoji in the HUD success flashes |
 | `launch_at_login` | `true` | reopen automatically after restart (also in the menu) |
+| `mic_grace_seconds` | `3` | how long the mic stays warm after a dictation (the orange indicator lingers this long); 0 closes it immediately at the cost of a possibly clipped first syllable on quick follow-ups |
 | `max_record_seconds` | `240` | hard stop for a single dictation |
 
 Dictation history: `~/Library/Application Support/Riffle/history.jsonl`
@@ -156,9 +157,9 @@ second: a few hundred milliseconds of transcription and a few hundred of
 cleanup.
 
 - The microphone engine is pre-warmed at launch and stays warm for a few
-  seconds after each dictation, so speaking the instant you press the
-  hotkey does not clip your first syllable (the orange mic indicator
-  lingers for those few seconds accordingly)
+  seconds after each dictation (mic_grace_seconds, default 3), so speaking
+  the instant you press the hotkey does not clip your first syllable; the
+  orange mic indicator lingers exactly that long
 - Riffle spawns and supervises `whisper-server` itself (port 12391) and
   shuts it down on quit
 - Ollama runs as a Homebrew service; if it is not running, Riffle starts a

@@ -99,6 +99,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         wireHotkey()
         setupStatusItem()
 
+        audio.graceSeconds = max(0, config.micGraceSeconds)
         audio.spectrumHandler = { [weak self] bands in
             self?.hud.setSpectrum(bands)
         }
@@ -902,6 +903,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         whisper.startIfNeeded()
         ollama = OllamaClient(baseURL: config.ollamaUrl, model: config.llmModel)
         ollamaHasModel = false
+        audio.graceSeconds = max(0, config.micGraceSeconds)
         Task { await self.ensureOllama() }
         Log.write("config reloaded")
         refreshMenuState()
