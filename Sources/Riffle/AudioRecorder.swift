@@ -152,6 +152,10 @@ final class AudioRecorder {
             try startEngine()
         } catch {
             input.removeTap(onBus: 0)
+            // The engine may still be running from the warm grace window;
+            // without rescheduling the stop it would run (and hold the mic)
+            // forever after a failed start.
+            scheduleGraceStop(after: graceSeconds)
             throw error
         }
         isRecording = true

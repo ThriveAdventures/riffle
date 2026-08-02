@@ -118,7 +118,7 @@ final class WhisperService {
         var req = URLRequest(url: baseURL)
         req.timeoutInterval = 2
         do {
-            _ = try await URLSession.shared.data(for: req)
+            _ = try await Net.session.data(for: req)
             return true
         } catch {
             return false
@@ -190,7 +190,7 @@ final class WhisperService {
         body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
         req.httpBody = body
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await Net.session.data(for: req)
         guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
             let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
             throw NSError(domain: "Riffle", code: 20,

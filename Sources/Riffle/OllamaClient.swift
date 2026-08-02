@@ -15,13 +15,13 @@ final class OllamaClient {
     func isUp() async -> Bool {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/version"))
         req.timeoutInterval = 2
-        return (try? await URLSession.shared.data(for: req)) != nil
+        return (try? await Net.session.data(for: req)) != nil
     }
 
     func hasModel() async -> Bool {
         var req = URLRequest(url: baseURL.appendingPathComponent("api/tags"))
         req.timeoutInterval = 3
-        guard let (data, _) = try? await URLSession.shared.data(for: req) else { return false }
+        guard let (data, _) = try? await Net.session.data(for: req) else { return false }
         struct Tags: Decodable {
             struct Model: Decodable { let name: String }
             let models: [Model]
@@ -38,7 +38,7 @@ final class OllamaClient {
         req.timeoutInterval = 120
         let payload: [String: Any] = ["model": model, "keep_alive": -1]
         req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
-        _ = try? await URLSession.shared.data(for: req)
+        _ = try? await Net.session.data(for: req)
         Log.write("ollama: preloaded \(model)")
     }
 
@@ -49,7 +49,7 @@ final class OllamaClient {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.timeoutInterval = 30
         req.httpBody = try? JSONSerialization.data(withJSONObject: ["model": model, "keep_alive": 0])
-        _ = try? await URLSession.shared.data(for: req)
+        _ = try? await Net.session.data(for: req)
         Log.write("ollama: unloaded \(model)")
     }
 
@@ -77,7 +77,7 @@ final class OllamaClient {
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await Net.session.data(for: req)
         guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
             let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
             throw NSError(domain: "Riffle", code: 30,
@@ -130,7 +130,7 @@ Rules: use only information from the transcript, never invent names, numbers, or
             ],
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: payload)
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await Net.session.data(for: req)
         guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
             let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
             throw NSError(domain: "Riffle", code: 32,
@@ -164,7 +164,7 @@ Rules: use only information from the transcript, never invent names, numbers, or
             ],
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: payload)
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await Net.session.data(for: req)
         guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
             let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
             throw NSError(domain: "Riffle", code: 31,

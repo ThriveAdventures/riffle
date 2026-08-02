@@ -119,7 +119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if config.cleanupEngine == "ollama" {
             Task { await self.ensureOllama() }
         }
-        healthTimer = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { [weak self] _ in
+        healthTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             self?.refreshHealth()
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
