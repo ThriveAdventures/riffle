@@ -115,6 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         checkAccessibility(promptUser: true)
         startHotkeyIfPossible()
+        syncLoginItem()
 
         if config.cleanupEngine == "ollama" {
             Task { await self.ensureOllama() }
@@ -846,16 +847,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func toggleLoginItem() {
+        config.launchAtLogin = SMAppService.mainApp.status != .enabled
+        config.save()
         do {
-            if SMAppService.mainApp.status == .enabled {
-                try SMAppService.mainApp.unregister()
-            } else {
+            if config.launchAtLogin {
                 try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
             }
         } catch {
             Log.write("login item: \(error.localizedDescription)")
         }
         refreshMenuState()
+    }
+
+    // Riffle should survive restarts by default; register as a login item
+    // unless the user opted out.
+    private func syncLoginItem() {
+        guard Bundle.main.bundleIdentifier != nil else { return }
+        let enabled = SMAppService.mainApp.status == .enabled
+        do {
+            if config.launchAtLogin, !enabled {
+                try SMAppService.mainApp.register()
+                Log.write("login item: registered (launch at login on)")
+            } else if !config.launchAtLogin, enabled {
+                try SMAppService.mainApp.unregister()
+                Log.write("login item: unregistered per config")
+            }
+        } catch {
+            Log.write("login item: sync failed: \(error.localizedDescription)")
+        }
     }
 
     @objc private func openAxSettings() {

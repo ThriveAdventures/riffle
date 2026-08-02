@@ -25,6 +25,7 @@ struct RiffleConfig: Codable {
     var historyEnabled = true
     var maxRecordSeconds = 240
     var fun = true                          // occasional emoji in the HUD flashes
+    var launchAtLogin = true
     // Seed with a few examples; put your own names, clients, and jargon here.
     var dictionary: [String] = [
         "Kubernetes", "PostgreSQL", "Ollama", "SKU",
@@ -48,6 +49,7 @@ struct RiffleConfig: Codable {
         case historyEnabled = "history_enabled"
         case maxRecordSeconds = "max_record_seconds"
         case fun
+        case launchAtLogin = "launch_at_login"
         case dictionary
         case replacements
     }
@@ -76,6 +78,7 @@ struct RiffleConfig: Codable {
         historyEnabled = dec(.historyEnabled, d.historyEnabled)
         maxRecordSeconds = dec(.maxRecordSeconds, d.maxRecordSeconds)
         fun = dec(.fun, d.fun)
+        launchAtLogin = dec(.launchAtLogin, d.launchAtLogin)
         dictionary = dec(.dictionary, d.dictionary)
         replacements = dec(.replacements, d.replacements)
     }
