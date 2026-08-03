@@ -14,7 +14,10 @@ if let idx = CommandLine.arguments.firstIndex(of: "--selftest"),
 }
 if let idx = CommandLine.arguments.firstIndex(of: "--summarizetest"),
    CommandLine.arguments.count > idx + 1 {
-    exit(runSummarizeTest(path: CommandLine.arguments[idx + 1]))
+    let context = CommandLine.arguments.count > idx + 2
+        ? CommandLine.arguments[(idx + 2)...].joined(separator: " ")
+        : nil
+    exit(runSummarizeTest(path: CommandLine.arguments[idx + 1], context: context))
 }
 if let idx = CommandLine.arguments.firstIndex(of: "--appletest"),
    CommandLine.arguments.count > idx + 1 {

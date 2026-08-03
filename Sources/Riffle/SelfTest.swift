@@ -88,7 +88,7 @@ func runAppleTest(raw: String) -> Int32 {
 
 // Regenerate a meeting summary from an existing notes file:
 // riffle --summarizetest <notes.md>
-func runSummarizeTest(path: String) -> Int32 {
+func runSummarizeTest(path: String, context: String?) -> Int32 {
     let semaphore = DispatchSemaphore(value: 0)
     var code: Int32 = 1
     Task {
@@ -120,13 +120,14 @@ func runSummarizeTest(path: String) -> Int32 {
         print("segments: you=\(mic.count) them=\(system.count), merged turns=\(transcript.components(separatedBy: "\n").count), chars=\(transcript.count), language=\(language)")
         let config = RiffleConfig.load()
         let ollama = OllamaClient(baseURL: config.ollamaUrl, model: config.llmModel)
+        ollama.summaryModel = config.summaryModel.isEmpty ? nil : config.summaryModel
         guard await ollama.isUp(), await ollama.hasModel() else {
             print("FAIL: ollama unavailable")
             return
         }
         do {
             let summary = try await ollama.summarizeMeeting(transcript: transcript, minutes: 45,
-                                                            language: language)
+                                                            language: language, context: context)
             let md = MeetingNotes.build(transcript: transcript, seconds: 2671, summary: summary)
             let out = path.replacingOccurrences(of: ".md", with: "-v2.md")
             try md.data(using: .utf8)?.write(to: URL(fileURLWithPath: out))

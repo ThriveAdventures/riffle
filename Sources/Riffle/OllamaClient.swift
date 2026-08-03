@@ -6,6 +6,9 @@ final class OllamaClient {
 
     var baseURL: URL
     var model: String
+    // Optional stronger model used only for meeting summaries; loaded on
+    // demand and released after a short keep-alive.
+    var summaryModel: String?
 
     init(baseURL: String, model: String) {
         self.baseURL = URL(string: baseURL) ?? URL(string: "http://127.0.0.1:11434")!
@@ -93,13 +96,15 @@ final class OllamaClient {
 
     // Meeting summary over a long attributed transcript. Needs a large
     // context window, so this always runs on the Ollama engine.
-    func summarizeMeeting(transcript: String, minutes: Int, language: String) async throws -> String {
+    func summarizeMeeting(transcript: String, minutes: Int, language: String,
+                          context: String? = nil) async throws -> String {
         // Long meetings overflow the context window, which silently evicts
         // the instructions and produces unstructured English chat. Digest
         // chunks first, then summarize the digests.
         let maxChars = 55_000
         if transcript.count <= maxChars {
-            return try await finalSummary(transcript: transcript, minutes: minutes, language: language)
+            return try await finalSummary(transcript: transcript, minutes: minutes,
+                                          language: language, context: context)
         }
         var digests: [String] = []
         let lines = transcript.components(separatedBy: "\n")
@@ -117,21 +122,26 @@ final class OllamaClient {
         let combined = digests.enumerated()
             .map { "Part \($0.offset + 1):\n\($0.element)" }
             .joined(separator: "\n\n")
-        return try await finalSummary(transcript: combined, minutes: minutes, language: language)
+        return try await finalSummary(transcript: combined, minutes: minutes,
+                                      language: language, context: context)
     }
 
     private func digest(chunk: String, language: String) async throws -> String {
-        let system = "You condense a portion of a meeting transcript into 8 to 15 factual bullets: decisions, numbers, names, commitments, and key points, keeping who said what when it matters. Write the bullets in \(language). No commentary, no introduction, bullets only. Never use em-dashes."
+        let system = "You break a portion of a meeting transcript into its TOPICS. For each topic output a heading line '### <short topic name> [<first timestamp>-<last timestamp>]' followed by 2 to 5 factual bullets capturing decisions, numbers, names, and commitments, noting who said what when it matters. Write everything in \(language). No commentary, no introduction. Never use em-dashes."
         return try await chat(system: system, user: chunk,
-                              options: ["temperature": 0.2, "num_ctx": 16384, "num_predict": 800])
+                              options: ["temperature": 0.2, "num_ctx": 16384, "num_predict": 1200])
     }
 
-    private func finalSummary(transcript: String, minutes: Int, language: String) async throws -> String {
-        let system = """
-You summarize meeting transcripts. The transcript labels the local speaker "You" and everyone else "Them", with timestamps. Write markdown with exactly these sections:
+    private func finalSummary(transcript: String, minutes: Int, language: String,
+                              context: String?) async throws -> String {
+        var system = """
+You summarize meeting transcripts. The material labels the local speaker "You" and everyone else "Them", with timestamps, and may arrive as per-part topic digests. Write markdown with exactly these sections:
 
 ## TLDR
-Two to four sentences capturing what the meeting was about and where it landed.
+Two to four sentences. The FIRST sentence states the meeting's primary purpose: what the participants convened to discuss or decide. Then where it landed.
+
+## Topics
+One '### <topic name> [<timestamp range>]' subsection per major topic of the meeting, in chronological order, each with 2 to 5 bullets of the substance: numbers, names, positions taken, options weighed. Merge duplicate topics that span parts.
 
 ## Decisions
 Bullet list of decisions actually made. Write "None." if there were none.
@@ -139,14 +149,14 @@ Bullet list of decisions actually made. Write "None." if there were none.
 ## Action items
 Bullet list in the form "Owner: task (deadline if stated)". Only include items actually agreed. Write "None." if there were none.
 
-## Notes
-Three to eight bullets of other points worth remembering.
-
-Rules: write the ENTIRE summary in LANGPLACEHOLDER. Use only information from the transcript, never invent names, numbers, or commitments. No introductions, no offers to help, no questions to the reader: only the four sections. Never use em-dashes.
+Rules: write the ENTIRE summary in LANGPLACEHOLDER. Use only information from the transcript and the owner context below, never invent names, numbers, or commitments. No introductions, no offers to help, no questions to the reader: only the sections above. Never use em-dashes.
 """.replacingOccurrences(of: "LANGPLACEHOLDER", with: language)
+        if let context, !context.isEmpty {
+            system += "\n\nTrusted context from the meeting owner (use it to frame the purpose and correct garbled names): \(context)"
+        }
         return try await chat(system: system,
                               user: "Meeting length: \(minutes) minutes.\n\nTRANSCRIPT:\n\(transcript)",
-                              options: ["temperature": 0.2, "num_ctx": 32768, "num_predict": 2500])
+                              options: ["temperature": 0.2, "num_ctx": 32768, "num_predict": 3500])
     }
 
     private func chat(system: String, user: String, options: [String: Any]) async throws -> String {
@@ -155,9 +165,9 @@ Rules: write the ENTIRE summary in LANGPLACEHOLDER. Use only information from th
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.timeoutInterval = 600
         let payload: [String: Any] = [
-            "model": model,
+            "model": summaryModel ?? model,
             "stream": false,
-            "keep_alive": -1,
+            "keep_alive": "15m",
             "options": options,
             "messages": [
                 ["role": "system", "content": system],

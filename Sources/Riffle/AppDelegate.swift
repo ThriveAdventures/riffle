@@ -96,6 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         whisper = WhisperService(config: config)
         whisper.startIfNeeded()
         ollama = OllamaClient(baseURL: config.ollamaUrl, model: config.llmModel)
+        ollama.summaryModel = config.summaryModel.isEmpty ? nil : config.summaryModel
         wireHotkey()
         setupStatusItem()
 
@@ -913,6 +914,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         whisper = WhisperService(config: config)
         whisper.startIfNeeded()
         ollama = OllamaClient(baseURL: config.ollamaUrl, model: config.llmModel)
+        ollama.summaryModel = config.summaryModel.isEmpty ? nil : config.summaryModel
         ollamaHasModel = false
         audio.graceSeconds = max(0, config.micGraceSeconds)
         Task { await self.ensureOllama() }

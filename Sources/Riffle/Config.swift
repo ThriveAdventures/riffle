@@ -14,6 +14,7 @@ struct RiffleConfig: Codable {
     var cleanupEnabled = true
     var cleanupEngine = "ollama"            // ollama | apple (Foundation Models)
     var llmModel = "qwen2.5:7b"
+    var summaryModel = ""                   // stronger model for meeting summaries; empty = llm_model
     var ollamaUrl = "http://127.0.0.1:11434"
     var whisperPort = 12391
     var whisperModel = ""                   // empty = default path in Application Support
@@ -39,6 +40,7 @@ struct RiffleConfig: Codable {
         case cleanupEnabled = "cleanup_enabled"
         case cleanupEngine = "cleanup_engine"
         case llmModel = "llm_model"
+        case summaryModel = "summary_model"
         case ollamaUrl = "ollama_url"
         case whisperPort = "whisper_port"
         case whisperModel = "whisper_model"
@@ -69,6 +71,7 @@ struct RiffleConfig: Codable {
         cleanupEnabled = dec(.cleanupEnabled, d.cleanupEnabled)
         cleanupEngine = dec(.cleanupEngine, d.cleanupEngine)
         llmModel = dec(.llmModel, d.llmModel)
+        summaryModel = dec(.summaryModel, d.summaryModel)
         ollamaUrl = dec(.ollamaUrl, d.ollamaUrl)
         whisperPort = dec(.whisperPort, d.whisperPort)
         whisperModel = dec(.whisperModel, d.whisperModel)
