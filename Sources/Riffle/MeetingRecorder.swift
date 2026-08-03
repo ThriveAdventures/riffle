@@ -30,8 +30,36 @@ final class MeetingRecorder {
     private let queue = DispatchQueue(label: "riffle.meeting.io")
     private var micPath = ""
     private var systemPath = ""
+    private var micPeak: Float = 0
     private(set) var isRecording = false
     private(set) var startedAt = Date.distantPast
+
+    // Name of the current default input, shown at start so a wrong or
+    // faraway mic is caught before 44 minutes are wasted.
+    static func defaultInputName() -> String {
+        var deviceID = AudioObjectID(0)
+        var size = UInt32(MemoryLayout<AudioObjectID>.size)
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject),
+                                         &addr, 0, nil, &size, &deviceID) == noErr,
+              deviceID != 0 else { return "unknown mic" }
+        var name: Unmanaged<CFString>?
+        var nameSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        var nameAddr = AudioObjectPropertyAddress(
+            mSelector: kAudioObjectPropertyName,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        guard AudioObjectGetPropertyData(deviceID, &nameAddr, 0, nil, &nameSize, &name) == noErr,
+              let cf = name?.takeRetainedValue() else { return "unknown mic" }
+        return cf as String
+    }
+
+    // True when the mic track has stayed at silence levels; checked a bit
+    // into the meeting to warn early.
+    var micSeemsSilent: Bool { micPeak < 0.01 }
 
     func start() throws {
         guard !isRecording else { return }
@@ -72,9 +100,12 @@ final class MeetingRecorder {
             let count = Int(buffer.frameLength)
             guard count > 0 else { return }
             let bufferRate = buffer.format.sampleRate
+            var peak: Float = 0
+            for i in 0..<count { peak = max(peak, abs(channel[i])) }
             let data = Data(bytes: channel, count: count * 4)
             queue.async {
                 if bufferRate > 0 { self.micRate = bufferRate }
+                self.micPeak = max(self.micPeak, peak)
                 self.micFile?.write(data)
                 self.micCount += count
             }

@@ -86,6 +86,60 @@ func runAppleTest(raw: String) -> Int32 {
     return code
 }
 
+// Regenerate a meeting summary from an existing notes file:
+// riffle --summarizetest <notes.md>
+func runSummarizeTest(path: String) -> Int32 {
+    let semaphore = DispatchSemaphore(value: 0)
+    var code: Int32 = 1
+    Task {
+        defer { semaphore.signal() }
+        guard let content = try? String(contentsOfFile: path, encoding: .utf8) else {
+            print("FAIL: cannot read \(path)")
+            return
+        }
+        var mic: [WhisperService.Segment] = []
+        var system: [WhisperService.Segment] = []
+        let regex = try! NSRegularExpression(pattern: "^- \\[(\\d+):(\\d+)\\] (You|Them): (.*)$")
+        for line in content.components(separatedBy: "\n") {
+            let range = NSRange(line.startIndex..., in: line)
+            guard let m = regex.firstMatch(in: line, range: range),
+                  let mm = Range(m.range(at: 1), in: line).map({ Double(line[$0]) ?? 0 }),
+                  let ss = Range(m.range(at: 2), in: line).map({ Double(line[$0]) ?? 0 }),
+                  let sp = Range(m.range(at: 3), in: line).map({ String(line[$0]) }),
+                  let tx = Range(m.range(at: 4), in: line).map({ String(line[$0]) })
+            else { continue }
+            let seg = WhisperService.Segment(start: mm * 60 + ss, end: mm * 60 + ss + 1, text: tx)
+            if sp == "You" { mic.append(seg) } else { system.append(seg) }
+        }
+        guard !mic.isEmpty || !system.isEmpty else {
+            print("FAIL: no transcript lines found")
+            return
+        }
+        let transcript = MeetingNotes.mergedTranscript(mic: mic, system: system)
+        let language = MeetingNotes.dominantLanguageName(transcript)
+        print("segments: you=\(mic.count) them=\(system.count), merged turns=\(transcript.components(separatedBy: "\n").count), chars=\(transcript.count), language=\(language)")
+        let config = RiffleConfig.load()
+        let ollama = OllamaClient(baseURL: config.ollamaUrl, model: config.llmModel)
+        guard await ollama.isUp(), await ollama.hasModel() else {
+            print("FAIL: ollama unavailable")
+            return
+        }
+        do {
+            let summary = try await ollama.summarizeMeeting(transcript: transcript, minutes: 45,
+                                                            language: language)
+            let md = MeetingNotes.build(transcript: transcript, seconds: 2671, summary: summary)
+            let out = path.replacingOccurrences(of: ".md", with: "-v2.md")
+            try md.data(using: .utf8)?.write(to: URL(fileURLWithPath: out))
+            print("wrote \(out)")
+            code = 0
+        } catch {
+            print("FAIL: \(error.localizedDescription)")
+        }
+    }
+    semaphore.wait()
+    return code
+}
+
 // Visual check: riffle --hudtest [output-prefix]
 // Cycles the HUD through listening, processing, and flash states with a
 // synthetic level signal. With an output prefix, captures its own window

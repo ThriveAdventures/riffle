@@ -93,11 +93,40 @@ final class OllamaClient {
 
     // Meeting summary over a long attributed transcript. Needs a large
     // context window, so this always runs on the Ollama engine.
-    func summarizeMeeting(transcript: String, minutes: Int) async throws -> String {
-        var req = URLRequest(url: baseURL.appendingPathComponent("api/chat"))
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.timeoutInterval = 600
+    func summarizeMeeting(transcript: String, minutes: Int, language: String) async throws -> String {
+        // Long meetings overflow the context window, which silently evicts
+        // the instructions and produces unstructured English chat. Digest
+        // chunks first, then summarize the digests.
+        let maxChars = 55_000
+        if transcript.count <= maxChars {
+            return try await finalSummary(transcript: transcript, minutes: minutes, language: language)
+        }
+        var digests: [String] = []
+        let lines = transcript.components(separatedBy: "\n")
+        var chunk = ""
+        for line in lines {
+            if chunk.count + line.count > 28_000 {
+                digests.append(try await digest(chunk: chunk, language: language))
+                chunk = ""
+            }
+            chunk += line + "\n"
+        }
+        if !chunk.isEmpty {
+            digests.append(try await digest(chunk: chunk, language: language))
+        }
+        let combined = digests.enumerated()
+            .map { "Part \($0.offset + 1):\n\($0.element)" }
+            .joined(separator: "\n\n")
+        return try await finalSummary(transcript: combined, minutes: minutes, language: language)
+    }
+
+    private func digest(chunk: String, language: String) async throws -> String {
+        let system = "You condense a portion of a meeting transcript into 8 to 15 factual bullets: decisions, numbers, names, commitments, and key points, keeping who said what when it matters. Write the bullets in \(language). No commentary, no introduction, bullets only. Never use em-dashes."
+        return try await chat(system: system, user: chunk,
+                              options: ["temperature": 0.2, "num_ctx": 16384, "num_predict": 800])
+    }
+
+    private func finalSummary(transcript: String, minutes: Int, language: String) async throws -> String {
         let system = """
 You summarize meeting transcripts. The transcript labels the local speaker "You" and everyone else "Them", with timestamps. Write markdown with exactly these sections:
 
@@ -113,20 +142,26 @@ Bullet list in the form "Owner: task (deadline if stated)". Only include items a
 ## Notes
 Three to eight bullets of other points worth remembering.
 
-Rules: use only information from the transcript, never invent names, numbers, or commitments. Keep the speaker's language (summarize French meetings in French). Never use em-dashes.
-"""
+Rules: write the ENTIRE summary in LANGPLACEHOLDER. Use only information from the transcript, never invent names, numbers, or commitments. No introductions, no offers to help, no questions to the reader: only the four sections. Never use em-dashes.
+""".replacingOccurrences(of: "LANGPLACEHOLDER", with: language)
+        return try await chat(system: system,
+                              user: "Meeting length: \(minutes) minutes.\n\nTRANSCRIPT:\n\(transcript)",
+                              options: ["temperature": 0.2, "num_ctx": 32768, "num_predict": 2500])
+    }
+
+    private func chat(system: String, user: String, options: [String: Any]) async throws -> String {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/chat"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = 600
         let payload: [String: Any] = [
             "model": model,
             "stream": false,
             "keep_alive": -1,
-            "options": [
-                "temperature": 0.2,
-                "num_ctx": 32768,
-                "num_predict": 2500,
-            ],
+            "options": options,
             "messages": [
                 ["role": "system", "content": system],
-                ["role": "user", "content": "Meeting length: \(minutes) minutes.\n\nTRANSCRIPT:\n\(transcript)"],
+                ["role": "user", "content": user],
             ],
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: payload)

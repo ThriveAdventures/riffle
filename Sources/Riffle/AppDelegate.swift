@@ -550,8 +550,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         meetingStartedAt = Date()
         updateIcon()
         refreshMenuState()
-        hud.flash("Meeting recording started", ok: true)
+        let micName = MeetingRecorder.defaultInputName()
+        Log.write("meeting: mic device is \(micName)")
+        hud.flash("Recording meeting, mic: \(micName)", ok: true)
         playSound("Pop")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
+            guard let self, meetingActive,
+                  let rec = meetingBox as? MeetingRecorder, rec.micSeemsSilent else { return }
+            Log.write("meeting: mic track sounds silent 30s in")
+            hud.flash("Meeting mic sounds silent, check input device", ok: false)
+            playSound("Basso")
+        }
     }
 
     @available(macOS 14.2, *)
@@ -596,8 +605,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         var summary: String?
         if await ollama.isUp(), await ollama.hasModel() {
+            let language = MeetingNotes.dominantLanguageName(transcript)
             summary = try? await ollama.summarizeMeeting(transcript: transcript,
-                                                         minutes: max(1, Int(tracks.seconds / 60)))
+                                                         minutes: max(1, Int(tracks.seconds / 60)),
+                                                         language: language)
         }
 
         let md = MeetingNotes.build(transcript: transcript, seconds: tracks.seconds, summary: summary)

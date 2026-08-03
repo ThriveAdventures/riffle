@@ -12,6 +12,10 @@ if let idx = CommandLine.arguments.firstIndex(of: "--selftest"),
    CommandLine.arguments.count > idx + 1 {
     exit(runSelfTest(wavPath: CommandLine.arguments[idx + 1]))
 }
+if let idx = CommandLine.arguments.firstIndex(of: "--summarizetest"),
+   CommandLine.arguments.count > idx + 1 {
+    exit(runSummarizeTest(path: CommandLine.arguments[idx + 1]))
+}
 if let idx = CommandLine.arguments.firstIndex(of: "--appletest"),
    CommandLine.arguments.count > idx + 1 {
     exit(runAppleTest(raw: CommandLine.arguments[idx + 1]))
