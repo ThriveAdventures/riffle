@@ -138,20 +138,25 @@ final class AudioRecorder {
                           userInfo: [NSLocalizedDescriptionKey: "no audio input device"])
         }
         nativeRate = format.sampleRate
-        let maxSamples = maxSeconds > 0 ? Int(format.sampleRate * Double(maxSeconds)) : Int.max
 
-        input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
+        // format: nil makes the tap follow the node's live format. Passing
+        // a queried format raises an uncatchable NSException whenever a
+        // device switch has invalidated it (this crashed the app after a
+        // meeting recording changed the input device). The authoritative
+        // rate comes from the buffers themselves.
+        input.installTap(onBus: 0, bufferSize: 4096, format: nil) { [weak self] buffer, _ in
             guard let self, let channel = buffer.floatChannelData?[0] else { return }
             let count = Int(buffer.frameLength)
             guard count > 0 else { return }
+            let bufferRate = buffer.format.sampleRate
             let chunk = Array(UnsafeBufferPointer(start: channel, count: count))
-            var sum: Float = 0
-            for v in chunk { sum += v * v }
-            let rms = sqrt(sum / Float(count))
-            _ = rms
             self.queue.async {
+                if bufferRate > 0 { self.nativeRate = bufferRate }
                 self.samples.append(contentsOf: chunk)
                 let total = self.samples.count
+                let maxSamples = self.maxSeconds > 0
+                    ? Int(self.nativeRate * Double(self.maxSeconds))
+                    : Int.max
                 self.publishSpectrum()
                 DispatchQueue.main.async {
                     if total >= maxSamples, self.isRecording, !self.autoStopFired {

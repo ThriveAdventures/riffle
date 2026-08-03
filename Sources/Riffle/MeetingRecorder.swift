@@ -65,12 +65,16 @@ final class MeetingRecorder {
                           userInfo: [NSLocalizedDescriptionKey: "no microphone available"])
         }
         micRate = format.sampleRate
-        input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
+        // format: nil follows the node's live format; a queried format can
+        // be invalidated by device switches and installTap raises on it.
+        input.installTap(onBus: 0, bufferSize: 4096, format: nil) { [weak self] buffer, _ in
             guard let self, let channel = buffer.floatChannelData?[0] else { return }
             let count = Int(buffer.frameLength)
             guard count > 0 else { return }
+            let bufferRate = buffer.format.sampleRate
             let data = Data(bytes: channel, count: count * 4)
             queue.async {
+                if bufferRate > 0 { self.micRate = bufferRate }
                 self.micFile?.write(data)
                 self.micCount += count
             }
