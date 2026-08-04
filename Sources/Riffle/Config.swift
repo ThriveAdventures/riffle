@@ -24,7 +24,7 @@ struct RiffleConfig: Codable {
     var restoreClipboard = true
     var sounds = true
     var historyEnabled = true
-    var maxRecordSeconds = 240
+    var maxRecordSeconds = 600
     var fun = true                          // occasional emoji in the HUD flashes
     var launchAtLogin = true
     var micGraceSeconds = 3.0               // how long the mic stays warm after a dictation

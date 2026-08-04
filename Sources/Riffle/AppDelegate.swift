@@ -105,6 +105,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.hud.setSpectrum(bands)
         }
         audio.onAutoStop = { [weak self] in
+            Log.write("dictation hit max_record_seconds, auto-stopping")
             self?.stopAndProcess()
         }
         AudioRecorder.requestMicAccess { [weak self] ok in
@@ -473,8 +474,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             completed.removeValue(forKey: nextInsertSeq)
             nextInsertSeq += 1
             guard let p = entry else { continue }
+            // Long dictations stay on the clipboard after pasting: if the
+            // paste missed its target (focus moved during processing), the
+            // text is one cmd+v away instead of gone.
+            let keepOnClipboard = p.text.count >= 400
             TextInserter.insert(text: p.text, mode: config.insertMode,
-                                restoreClipboard: config.restoreClipboard,
+                                restoreClipboard: config.restoreClipboard && !keepOnClipboard,
                                 presaved: config.restoreClipboard ? p.presavedClipboard : nil)
             if config.historyEnabled {
                 History.append(raw: p.raw, cleaned: p.text, app: p.app,
@@ -484,6 +489,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             Log.write("\(p.editMode ? "edit" : "dictation"): \(String(format: "%.1f", p.seconds))s audio, whisper \(p.transcribeMs)ms, cleanup \(p.cleanupMs)ms, llm=\(p.usedLLM)")
             if p.editMode {
                 flashIfIdle("Edited" + celebrationSuffix(edit: true), ok: true)
+            } else if keepOnClipboard {
+                flashIfIdle("Inserted \(p.text.count) chars, kept on clipboard", ok: true)
             } else {
                 flashIfIdle((p.usedLLM ? "Inserted" : "Inserted raw transcript")
                             + celebrationSuffix(edit: false), ok: true)

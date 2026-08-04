@@ -139,7 +139,7 @@ Config lives at `~/Library/Application Support/Riffle/config.json`
 | `fun` | `true` | occasional emoji in the HUD success flashes |
 | `launch_at_login` | `true` | reopen automatically after restart (also in the menu) |
 | `mic_grace_seconds` | `3` | how long the mic stays warm after a dictation (the orange indicator lingers this long); 0 closes it immediately at the cost of a possibly clipped first syllable on quick follow-ups |
-| `max_record_seconds` | `240` | hard stop for a single dictation |
+| `max_record_seconds` | `600` | hard stop for a single dictation |
 
 Dictation history: `~/Library/Application Support/Riffle/history.jsonl`
 (menu: Open history). Local only. Delete the file any time.
