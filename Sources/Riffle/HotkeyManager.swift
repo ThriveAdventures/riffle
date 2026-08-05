@@ -114,6 +114,19 @@ final class HotkeyManager {
         switch key {
         case .fn:
             down = flags.contains(.maskSecondaryFn)
+            // Only the physical fn/Globe key (keycode 63 or 179) may START a
+            // recording. macOS also posts synthetic flagsChanged events with
+            // keycode 0 carrying a stale fn bit during focus changes
+            // (switching apps, switching browser tabs); treating those as
+            // presses made the listener appear out of nowhere. Releases stay
+            // permissive: the fn bit can legitimately clear on another key's
+            // event (e.g. a shift keyUp), and ignoring one would leave a
+            // recording stuck on.
+            let physicalFnKey = keycode == 63 || keycode == 179
+            if down, !isDown, !physicalFnKey {
+                Log.write("hotkey: ignored synthetic fn down (keycode \(keycode))")
+                return Unmanaged.passUnretained(event)
+            }
             // fn is Riffle's push-to-talk key, so its press and release are
             // consumed outright. Apps never see the transition, which also
             // stops macOS's per-app fn handling (emoji palette, input
@@ -121,8 +134,9 @@ final class HotkeyManager {
             // old "Press fn key to" setting. fn-plus-key combos are
             // unaffected: those carry the fn flag inside their own keyDown
             // events. Never done for the right-modifier hotkeys, which
-            // other shortcuts legitimately depend on.
-            consumeTransition = true
+            // other shortcuts legitimately depend on. Transitions riding on
+            // some other key's event pass through untouched.
+            consumeTransition = physicalFnKey
         case .rightCommand:
             if keycode == 54 { down = flags.contains(.maskCommand) }
         case .rightOption:
