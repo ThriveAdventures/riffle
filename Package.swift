@@ -5,6 +5,8 @@ let package = Package(
     name: "Riffle",
     platforms: [.macOS(.v13)],
     targets: [
-        .executableTarget(name: "Riffle", path: "Sources/Riffle")
+        .target(name: "RiffleShims", path: "Sources/RiffleShims"),
+        .executableTarget(name: "Riffle", dependencies: ["RiffleShims"],
+                          path: "Sources/Riffle")
     ]
 )

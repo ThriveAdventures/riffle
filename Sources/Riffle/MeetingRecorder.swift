@@ -95,7 +95,7 @@ final class MeetingRecorder {
         micRate = format.sampleRate
         // format: nil follows the node's live format; a queried format can
         // be invalidated by device switches and installTap raises on it.
-        input.installTap(onBus: 0, bufferSize: 4096, format: nil) { [weak self] buffer, _ in
+        let tap: (AVAudioPCMBuffer, AVAudioTime) -> Void = { [weak self] buffer, _ in
             guard let self, let channel = buffer.floatChannelData?[0] else { return }
             let count = Int(buffer.frameLength)
             guard count > 0 else { return }
@@ -110,8 +110,16 @@ final class MeetingRecorder {
                 self.micCount += count
             }
         }
-        micEngine.prepare()
-        try micEngine.start()
+        // Both calls raise NSExceptions (not Swift errors) on stale device
+        // state; the catcher turns them into a thrown error so a bad mic
+        // fails the meeting start instead of killing the app.
+        try riffleCatching("meeting mic tap install") {
+            input.installTap(onBus: 0, bufferSize: 4096, format: nil, block: tap)
+        }
+        try riffleCatching("meeting mic start") {
+            micEngine.prepare()
+            try micEngine.start()
+        }
     }
 
     private func startSystemTap() throws {

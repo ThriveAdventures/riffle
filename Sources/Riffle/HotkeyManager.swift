@@ -114,19 +114,6 @@ final class HotkeyManager {
         switch key {
         case .fn:
             down = flags.contains(.maskSecondaryFn)
-            // Only the physical fn/Globe key (keycode 63 or 179) may START a
-            // recording. macOS also posts synthetic flagsChanged events with
-            // keycode 0 carrying a stale fn bit during focus changes
-            // (switching apps, switching browser tabs); treating those as
-            // presses made the listener appear out of nowhere. Releases stay
-            // permissive: the fn bit can legitimately clear on another key's
-            // event (e.g. a shift keyUp), and ignoring one would leave a
-            // recording stuck on.
-            let physicalFnKey = keycode == 63 || keycode == 179
-            if down, !isDown, !physicalFnKey {
-                Log.write("hotkey: ignored synthetic fn down (keycode \(keycode))")
-                return Unmanaged.passUnretained(event)
-            }
             // fn is Riffle's push-to-talk key, so its press and release are
             // consumed outright. Apps never see the transition, which also
             // stops macOS's per-app fn handling (emoji palette, input
@@ -134,9 +121,14 @@ final class HotkeyManager {
             // old "Press fn key to" setting. fn-plus-key combos are
             // unaffected: those carry the fn flag inside their own keyDown
             // events. Never done for the right-modifier hotkeys, which
-            // other shortcuts legitimately depend on. Transitions riding on
-            // some other key's event pass through untouched.
-            consumeTransition = physicalFnKey
+            // other shortcuts legitimately depend on.
+            // Transitions are accepted whatever keycode the event carries.
+            // Focus changes occasionally post ghost fn events with keycode
+            // 0, but some genuine presses also arrive as keycode 0, so a
+            // keycode filter (tried once) silently dropped real presses.
+            // The kbd/src fields in the transition log exist to find a
+            // reliable discriminator for the ghosts.
+            consumeTransition = true
         case .rightCommand:
             if keycode == 54 { down = flags.contains(.maskCommand) }
         case .rightOption:
@@ -146,7 +138,9 @@ final class HotkeyManager {
             isDown = down
             let at = Date()
             if key == .fn {
-                Log.write("hotkey: fn \(down ? "down" : "up") keycode \(keycode) flags 0x\(String(flags.rawValue, radix: 16))")
+                let kbd = event.getIntegerValueField(.keyboardEventKeyboardType)
+                let src = event.getIntegerValueField(.eventSourceUnixProcessID)
+                Log.write("hotkey: fn \(down ? "down" : "up") keycode \(keycode) kbd \(kbd) src \(src) flags 0x\(String(flags.rawValue, radix: 16))")
             }
             if down {
                 let shiftHeld = flags.contains(.maskShift)

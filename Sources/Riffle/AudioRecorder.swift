@@ -93,7 +93,10 @@ final class AudioRecorder {
     // route is live before the user's first word.
     func warmup() {
         guard !isRecording else { return }
-        try? startEngine()
+        if (try? startEngine()) == nil {
+            rebuildEngine()
+            try? startEngine()
+        }
         scheduleGraceStop(after: 1.5)
     }
 
@@ -108,24 +111,18 @@ final class AudioRecorder {
             throw NSError(domain: "Riffle", code: 12,
                           userInfo: [NSLocalizedDescriptionKey: "no audio input device"])
         }
-        engine.prepare()
         do {
-            try engine.start()
+            try riffleCatching("engine start") {
+                engine.prepare()
+                try engine.start()
+            }
         } catch {
             // A stale configuration (device switch) can wedge the engine;
-            // reset once and retry.
+            // reset once and retry. Failures beyond this get a full engine
+            // rebuild from the caller.
             engine.stop()
             engine.reset()
-            engine.prepare()
-            do {
-                try engine.start()
-            } catch {
-                rebuildEngine()
-                let fresh = engine.inputNode.outputFormat(forBus: 0)
-                guard fresh.sampleRate > 0, fresh.channelCount > 0 else {
-                    throw NSError(domain: "Riffle", code: 12,
-                                  userInfo: [NSLocalizedDescriptionKey: "no audio input device"])
-                }
+            try riffleCatching("engine restart") {
                 engine.prepare()
                 try engine.start()
             }
@@ -161,24 +158,38 @@ final class AudioRecorder {
         autoStopFired = false
         dbCeiling = -30
 
-        // The engine must be running before the tap goes in: a failed start
-        // can rebuild the engine, and a tap installed on the old instance
-        // would capture nothing. The warm path already works this way (the
-        // engine runs through the grace window, the tap joins later).
         do {
-            try startEngine()
+            try beginCapture()
         } catch {
-            // The engine may still be running from the warm grace window;
-            // without rescheduling the stop it would run (and hold the mic)
-            // forever after a failed start.
-            scheduleGraceStop(after: graceSeconds)
-            throw error
+            // One full retry on a fresh engine: stale device state fails in
+            // ways reset() cannot clear (wedged starts, tap installs raising
+            // NSExceptions on a dead format). A rebuild rebinds everything
+            // to the current device.
+            Log.write("audio: capture failed (\(error.localizedDescription)), retrying on a fresh engine")
+            rebuildEngine()
+            do {
+                try beginCapture()
+            } catch {
+                // The engine may still be running from the warm grace
+                // window; without rescheduling the stop it would run (and
+                // hold the mic) forever after a failed start.
+                scheduleGraceStop(after: graceSeconds)
+                throw error
+            }
         }
+        isRecording = true
+    }
 
+    // Engine up, format sane, record tap installed. The engine must be
+    // running before the tap goes in: a failed start can rebuild the
+    // engine, and a tap installed on the old instance would capture
+    // nothing. The warm path already works this way (the engine runs
+    // through the grace window, the tap joins later).
+    private func beginCapture() throws {
+        try startEngine()
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else {
-            scheduleGraceStop(after: graceSeconds)
             throw NSError(domain: "Riffle", code: 10,
                           userInfo: [NSLocalizedDescriptionKey: "no audio input device"])
         }
@@ -189,7 +200,7 @@ final class AudioRecorder {
         // device switch has invalidated it (this crashed the app after a
         // meeting recording changed the input device). The authoritative
         // rate comes from the buffers themselves.
-        input.installTap(onBus: 0, bufferSize: 4096, format: nil) { [weak self] buffer, _ in
+        let tap: (AVAudioPCMBuffer, AVAudioTime) -> Void = { [weak self] buffer, _ in
             guard let self, let channel = buffer.floatChannelData?[0] else { return }
             let count = Int(buffer.frameLength)
             guard count > 0 else { return }
@@ -211,8 +222,9 @@ final class AudioRecorder {
                 }
             }
         }
-
-        isRecording = true
+        try riffleCatching("record tap install") {
+            input.installTap(onBus: 0, bufferSize: 4096, format: nil, block: tap)
+        }
     }
 
     // Real spectrum for the HUD meter: Hann window, 2048-point FFT, 12
