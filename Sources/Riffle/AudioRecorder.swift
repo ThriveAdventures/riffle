@@ -15,7 +15,8 @@ final class AudioRecorder {
     // after each dictation and pre-warmed at launch. Cold microphone
     // spin-up costs 100-300 ms and clips the first syllable when the user
     // speaks the instant they press the hotkey; a warm engine does not.
-    private let engine = AVAudioEngine()
+    private var engine = AVAudioEngine()
+    private var configObserver: NSObjectProtocol?
     private let queue = DispatchQueue(label: "riffle.audio.buffer")
     private var samples: [Float] = []
     private var nativeRate: Double = 48000
@@ -38,12 +39,18 @@ final class AudioRecorder {
 
     init() {
         vDSP_hann_window(&hannWindow, vDSP_Length(fftSize), Int32(vDSP_HANN_NORM))
-        // A kept-warm engine does not follow the system default input when
-        // the device changes (headphones connecting, for example); it keeps
-        // capturing a dead route, which records silence. The engine posts a
-        // configuration-change notification for exactly this; tear it down
-        // when idle so the next start rebinds to the current device.
-        NotificationCenter.default.addObserver(
+        observeEngine()
+    }
+
+    // A kept-warm engine does not follow the system default input when
+    // the device changes (headphones connecting, for example); it keeps
+    // capturing a dead route, which records silence. The engine posts a
+    // configuration-change notification for exactly this; tear it down
+    // when idle so the next start rebinds to the current device.
+    // Registered per engine instance, so a rebuild must call this again.
+    private func observeEngine() {
+        if let configObserver { NotificationCenter.default.removeObserver(configObserver) }
+        configObserver = NotificationCenter.default.addObserver(
             forName: .AVAudioEngineConfigurationChange,
             object: engine, queue: .main
         ) { [weak self] _ in
@@ -55,6 +62,18 @@ final class AudioRecorder {
                 engine.reset()
             }
         }
+    }
+
+    // Replaces a wedged engine with a fresh instance. After some device
+    // switches, reset() does not clear the input node's stale hardware
+    // format and every start() fails with kAudioUnitErr_FormatNotSupported
+    // (-10868) until the process restarts; only a new engine reliably
+    // rebinds to the current device.
+    private func rebuildEngine() {
+        engine.stop()
+        engine = AVAudioEngine()
+        observeEngine()
+        Log.write("audio: rebuilt engine after wedged start")
     }
 
     static func requestMicAccess(completion: @escaping (Bool) -> Void) {
@@ -98,7 +117,18 @@ final class AudioRecorder {
             engine.stop()
             engine.reset()
             engine.prepare()
-            try engine.start()
+            do {
+                try engine.start()
+            } catch {
+                rebuildEngine()
+                let fresh = engine.inputNode.outputFormat(forBus: 0)
+                guard fresh.sampleRate > 0, fresh.channelCount > 0 else {
+                    throw NSError(domain: "Riffle", code: 12,
+                                  userInfo: [NSLocalizedDescriptionKey: "no audio input device"])
+                }
+                engine.prepare()
+                try engine.start()
+            }
         }
     }
 
@@ -131,9 +161,24 @@ final class AudioRecorder {
         autoStopFired = false
         dbCeiling = -30
 
+        // The engine must be running before the tap goes in: a failed start
+        // can rebuild the engine, and a tap installed on the old instance
+        // would capture nothing. The warm path already works this way (the
+        // engine runs through the grace window, the tap joins later).
+        do {
+            try startEngine()
+        } catch {
+            // The engine may still be running from the warm grace window;
+            // without rescheduling the stop it would run (and hold the mic)
+            // forever after a failed start.
+            scheduleGraceStop(after: graceSeconds)
+            throw error
+        }
+
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else {
+            scheduleGraceStop(after: graceSeconds)
             throw NSError(domain: "Riffle", code: 10,
                           userInfo: [NSLocalizedDescriptionKey: "no audio input device"])
         }
@@ -167,16 +212,6 @@ final class AudioRecorder {
             }
         }
 
-        do {
-            try startEngine()
-        } catch {
-            input.removeTap(onBus: 0)
-            // The engine may still be running from the warm grace window;
-            // without rescheduling the stop it would run (and hold the mic)
-            // forever after a failed start.
-            scheduleGraceStop(after: graceSeconds)
-            throw error
-        }
         isRecording = true
     }
 
