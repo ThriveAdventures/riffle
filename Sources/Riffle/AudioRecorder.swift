@@ -1,5 +1,6 @@
 import AVFoundation
 import Accelerate
+import CoreAudio
 
 // Captures microphone audio at the device's native rate, then resamples to
 // 16 kHz mono 16-bit WAV, which is what whisper.cpp expects.
@@ -26,6 +27,10 @@ final class AudioRecorder {
 
     var maxSeconds = 240
     var graceSeconds: TimeInterval = 8
+    // Human-readable name of the device the engine last captured from,
+    // for the log and for "nothing heard" feedback (a warm engine can pin
+    // an unexpected device after audio routes change).
+    private(set) var lastCaptureDevice = "unknown input"
     // 12 log-spaced voice-band magnitudes, 0...1, delivered on main.
     var spectrumHandler: (([Float]) -> Void)?
     var onAutoStop: (() -> Void)?
@@ -40,6 +45,48 @@ final class AudioRecorder {
     init() {
         vDSP_hann_window(&hannWindow, vDSP_Length(fftSize), Int32(vDSP_HANN_NORM))
         observeEngine()
+        observeDefaultInputDevice()
+    }
+
+    // The engine's configuration-change notification only fires when the
+    // engine's own device goes away. When the system DEFAULT input moves to
+    // a different device that still exists (headphones plugged in, display
+    // reconnected), a warm engine keeps capturing the old device and hears
+    // the wrong room. Watch the default-input property directly and drop
+    // the idle engine so the next start rebinds.
+    private func observeDefaultInputDevice() {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        AudioObjectAddPropertyListenerBlock(
+            AudioObjectID(kAudioObjectSystemObject), &address, .main
+        ) { [weak self] _, _ in
+            guard let self else { return }
+            Log.write("audio: system default input changed")
+            if !isRecording {
+                graceTimer?.invalidate()
+                engine.stop()
+                engine.reset()
+            }
+        }
+    }
+
+    // Name and rate of the device the engine's input unit is bound to.
+    private func boundDeviceDescription() -> String {
+        let deviceID = engine.inputNode.auAudioUnit.deviceID
+        guard deviceID != kAudioObjectUnknown else { return "unknown input" }
+        var nameAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioObjectPropertyName,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        var name: CFString = "" as CFString
+        var size = UInt32(MemoryLayout<CFString>.size)
+        let status = withUnsafeMutablePointer(to: &name) {
+            AudioObjectGetPropertyData(deviceID, &nameAddress, 0, nil, &size, $0)
+        }
+        guard status == noErr else { return "unknown input" }
+        return name as String
     }
 
     // A kept-warm engine does not follow the system default input when
@@ -225,6 +272,8 @@ final class AudioRecorder {
         try riffleCatching("record tap install") {
             input.installTap(onBus: 0, bufferSize: 4096, format: nil, block: tap)
         }
+        lastCaptureDevice = boundDeviceDescription()
+        Log.write("audio: capturing via \(lastCaptureDevice) at \(Int(format.sampleRate)) Hz")
     }
 
     // Real spectrum for the HUD meter: Hann window, 2048-point FFT, 12

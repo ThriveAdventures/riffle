@@ -332,12 +332,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let recording = audio.stop()
         guard let recording, recording.peak >= 0.006 else {
             if let recording {
-                Log.write("nothing heard: \(String(format: "%.2f", recording.seconds))s audio, peak \(String(format: "%.4f", recording.peak)) (silent input?)")
+                Log.write("nothing heard: \(String(format: "%.2f", recording.seconds))s audio, peak \(String(format: "%.4f", recording.peak)) via \(audio.lastCaptureDevice) (silent input?)")
                 try? FileManager.default.removeItem(at: recording.url)
+                // Name the device: a silent recording is almost always the
+                // wrong or dead mic, and the name says which one to check.
+                hud.flash("Nothing heard from \(audio.lastCaptureDevice)", ok: false)
             } else {
                 Log.write("nothing heard: recording under minimum duration")
+                hud.flash("Nothing heard", ok: false)
             }
-            hud.flash("Nothing heard", ok: false)
             finishSeq(job.seq, with: nil)
             updateIcon()
             return
