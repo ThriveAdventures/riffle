@@ -72,20 +72,38 @@ final class AudioRecorder {
         }
     }
 
-    // Name and rate of the device the engine's input unit is bound to.
+    // Name of the device the engine's input unit is bound to. The engine
+    // usually binds the HAL's hidden default-device wrapper
+    // ("CADefaultDeviceAggregate-<pid>-0"), which means nothing to a
+    // human; resolve that to the actual current default input device.
     private func boundDeviceDescription() -> String {
-        let deviceID = engine.inputNode.auAudioUnit.deviceID
-        guard deviceID != kAudioObjectUnknown else { return "unknown input" }
-        var nameAddress = AudioObjectPropertyAddress(
+        var deviceID = engine.inputNode.auAudioUnit.deviceID
+        let raw = Self.deviceName(deviceID) ?? "unknown input"
+        guard raw.hasPrefix("CADefaultDeviceAggregate") else { return raw }
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject),
+                                         &address, 0, nil, &size, &deviceID) == noErr,
+              deviceID != kAudioObjectUnknown,
+              let name = Self.deviceName(deviceID) else { return raw }
+        return name
+    }
+
+    private static func deviceName(_ deviceID: AudioObjectID) -> String? {
+        guard deviceID != kAudioObjectUnknown else { return nil }
+        var address = AudioObjectPropertyAddress(
             mSelector: kAudioObjectPropertyName,
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain)
         var name: CFString = "" as CFString
         var size = UInt32(MemoryLayout<CFString>.size)
         let status = withUnsafeMutablePointer(to: &name) {
-            AudioObjectGetPropertyData(deviceID, &nameAddress, 0, nil, &size, $0)
+            AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, $0)
         }
-        guard status == noErr else { return "unknown input" }
+        guard status == noErr else { return nil }
         return name as String
     }
 
