@@ -114,6 +114,27 @@ final class HotkeyManager {
         switch key {
         case .fn:
             down = flags.contains(.maskSecondaryFn)
+            let physicalFnKey = keycode == 63 || keycode == 179
+            // Only the physical fn/Globe key may START a recording. macOS
+            // posts synthetic fn-flag events with keycode 0 during focus
+            // transitions (app or tab switches, Mission Control via F3),
+            // and those made the recorder appear out of nowhere, sometimes
+            // pasting transcribed room noise. Fingerprint logging settled
+            // the discriminator: every genuine press on both keyboards
+            // seen in the field arrived as keycode 63 (226 of 226), every
+            // ghost as keycode 0. Releases stay permissive: the fn bit can
+            // clear on another key's event (a shift keyUp, another ghost),
+            // and ignoring one would leave a recording stuck on.
+            if down, !isDown, !physicalFnKey {
+                Log.write("hotkey: ghost fn down ignored (keycode \(keycode))")
+                return Unmanaged.passUnretained(event)
+            }
+            // A physical-key release with no press on record means a real
+            // press went invisible because a ghost had already set the
+            // flag bit; logged so that collision is observable.
+            if !down, !isDown, physicalFnKey {
+                Log.write("hotkey: orphan fn release (press swallowed by a ghost?)")
+            }
             // fn is Riffle's push-to-talk key, so its press and release are
             // consumed outright. Apps never see the transition, which also
             // stops macOS's per-app fn handling (emoji palette, input
@@ -121,14 +142,10 @@ final class HotkeyManager {
             // old "Press fn key to" setting. fn-plus-key combos are
             // unaffected: those carry the fn flag inside their own keyDown
             // events. Never done for the right-modifier hotkeys, which
-            // other shortcuts legitimately depend on.
-            // Transitions are accepted whatever keycode the event carries.
-            // Focus changes occasionally post ghost fn events with keycode
-            // 0, but some genuine presses also arrive as keycode 0, so a
-            // keycode filter (tried once) silently dropped real presses.
-            // The kbd/src fields in the transition log exist to find a
-            // reliable discriminator for the ghosts.
-            consumeTransition = true
+            // other shortcuts legitimately depend on. Ghost events and
+            // transitions riding on other keys' events pass through
+            // unconsumed.
+            consumeTransition = physicalFnKey
         case .rightCommand:
             if keycode == 54 { down = flags.contains(.maskCommand) }
         case .rightOption:
