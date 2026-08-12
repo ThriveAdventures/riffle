@@ -271,7 +271,7 @@ Rules: write the ENTIRE summary in LANGPLACEHOLDER. Use only information from th
         lines.append("- Respond in the same language as the transcript.")
         lines.append("- Never use em-dash characters. Use a comma, a period, or parentheses instead.")
         if !dictionary.isEmpty {
-            lines.append("- Vocabulary that is often mis-transcribed. When the transcript contains something that sounds like one of these, use this exact spelling: \(dictionary.joined(separator: ", ")).")
+            lines.append("- Vocabulary that is often mis-transcribed. When the transcript contains something that sounds like one of these and the context fits, use this exact spelling, EVEN IF the transcribed word is itself a real word (a speech recognizer hearing \"Claude\" often writes \"cloud\"; when the sentence treats it as a person or tool, the vocabulary spelling wins): \(dictionary.joined(separator: ", ")).")
         }
         if let app = appName, !app.isEmpty {
             lines.append("- \(toneHint(for: app))")
