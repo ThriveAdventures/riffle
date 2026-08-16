@@ -119,12 +119,22 @@ struct RiffleConfig: Codable {
         return (p as NSString).expandingTildeInPath
     }
 
+    // True when config.json exists but could not be parsed. Callers must
+    // check this before saving: writing defaults over a file the user is
+    // mid-edit destroys their dictionary and replacements, and a single
+    // missing comma or a pasted smart quote is enough to trigger it.
+    private(set) static var lastLoadFailed = false
+
     static func load() -> RiffleConfig {
-        if let data = try? Data(contentsOf: fileURL),
-           let cfg = try? JSONDecoder().decode(RiffleConfig.self, from: data) {
-            return cfg
+        lastLoadFailed = false
+        guard let data = try? Data(contentsOf: fileURL) else {
+            return RiffleConfig()  // first run, no file yet
         }
-        return RiffleConfig()
+        guard let cfg = try? JSONDecoder().decode(RiffleConfig.self, from: data) else {
+            lastLoadFailed = true
+            return RiffleConfig()
+        }
+        return cfg
     }
 
     func save() {

@@ -77,6 +77,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var hintItem: NSMenuItem!
     private var whisperLine: NSMenuItem!
     private var cleanupLine: NSMenuItem!
+    private var vocabLine: NSMenuItem!
     private var cleanupToggle: NSMenuItem!
     private var engineOllamaItem: NSMenuItem!
     private var engineAppleItem: NSMenuItem!
@@ -90,7 +91,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         Log.write("riffle starting, pid \(ProcessInfo.processInfo.processIdentifier)")
         enforceSingleInstance()
-        config.save()  // materialize config.json with defaults on first run
+        // Materialize config.json with defaults on first run, but never
+        // write over a file that failed to parse: those are the user's own
+        // edits, and defaults would erase their dictionary.
+        if RiffleConfig.lastLoadFailed {
+            Log.write("config.json did not parse; running on defaults and leaving the file untouched")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                self?.hud.flash("config.json has a syntax error, using defaults", ok: false)
+            }
+        } else {
+            config.save()
+        }
 
         // Services and hotkey state must exist before the menu is built:
         // refreshMenuState() reads them.
@@ -718,6 +729,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(whisperLine)
         cleanupLine = infoItem("AI cleanup: checking")
         menu.addItem(cleanupLine)
+        vocabLine = infoItem("Vocabulary: none")
+        menu.addItem(vocabLine)
         menu.addItem(.separator())
 
         axItem = NSMenuItem(title: "Grant Accessibility permission (required)",
@@ -805,6 +818,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             whisperLine.title = "Whisper: ready"
         } else {
             whisperLine.title = "Whisper: starting"
+        }
+
+        // Vocabulary is invisible otherwise: it lives in a JSON file and
+        // silently shapes every transcript, so show that it is loaded.
+        let words = config.dictionary.count
+        let rules = config.replacements.count
+        if words == 0, rules == 0 {
+            vocabLine.title = "Vocabulary: none (add words in the config file)"
+        } else {
+            let wordPart = "\(words) word\(words == 1 ? "" : "s")"
+            vocabLine.title = rules == 0
+                ? "Vocabulary: \(wordPart)"
+                : "Vocabulary: \(wordPart), \(rules) replacement\(rules == 1 ? "" : "s")"
         }
 
         if !config.cleanupEnabled {
@@ -924,7 +950,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func reloadConfig() {
-        config = RiffleConfig.load()
+        let loaded = RiffleConfig.load()
+        // Keep the running settings rather than silently dropping to
+        // defaults, so a typo costs a flash instead of a dictionary.
+        guard !RiffleConfig.lastLoadFailed else {
+            Log.write("config reload rejected: config.json did not parse")
+            hud.flash("config.json has a syntax error, keeping current settings", ok: false)
+            return
+        }
+        config = loaded
         hotkey.key = HotkeyManager.HotKey.parse(config.hotkey)
         whisper.shutdown()
         whisper = WhisperService(config: config)

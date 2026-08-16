@@ -141,6 +141,34 @@ Config lives at `~/Library/Application Support/Riffle/config.json`
 | `mic_grace_seconds` | `3` | how long the mic stays warm after a dictation (the orange indicator lingers this long); 0 closes it immediately at the cost of a possibly clipped first syllable on quick follow-ups |
 | `max_record_seconds` | `600` | hard stop for a single dictation |
 
+### Teaching Riffle your words
+
+The `dictionary` is the highest-leverage setting. Names, brands, and jargon
+listed there are fed to Whisper as a decoding hint before transcription and
+named again in the cleanup prompt, so "Distex" stops coming back as "Distec".
+Put in the words a stranger would misspell: clients, products, colleagues,
+acronyms you say daily.
+
+`replacements` are the guarantee when a hint is not enough. A mis-hearing
+that lands on a real English word survives both passes, because nothing
+downstream can tell it is wrong: a recognizer hearing "Claude Code" writes
+"cloud code", which is a perfectly ordinary phrase. A replacement rewrites it
+outright, after the LLM, every time:
+
+```json
+"dictionary": ["Acme Robotics", "Kubernetes", "Claude"],
+"replacements": [
+  { "find": "cloud code", "replace": "Claude Code" },
+  { "find": "btw", "replace": "by the way" }
+]
+```
+
+Edit with **Open config file**, then **Reload config** to apply without
+restarting. The menu's Vocabulary line shows how many words and rules are
+loaded, so you can confirm an edit took effect. If the file has a JSON syntax
+error, Riffle keeps your current settings, says so, and leaves the file alone
+for you to fix.
+
 Dictation history: `~/Library/Application Support/Riffle/history.jsonl`
 (menu: Open history). Local only. Delete the file any time.
 
