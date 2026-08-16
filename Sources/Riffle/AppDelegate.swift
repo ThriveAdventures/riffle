@@ -52,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var ignoreNextUp = false
     private var pressStart = Date.distantPast
 
+    private var lastDictation: String?
     private var seqCounter = 0
     private var nextInsertSeq = 0
     private var completed: [Int: InsertPayload?] = [:]
@@ -480,9 +481,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // Long dictations stay on the clipboard after pasting: if the
             // paste missed its target (focus moved during processing), the
             // text is one cmd+v away instead of gone.
-            let keepOnClipboard = p.text.count >= 400
+            // Kept for recovery, NOT left sitting on the clipboard: parking
+            // long dictations there hijacked every later paste (including
+            // Universal Clipboard images from the iPhone). "Copy last
+            // dictation" in the menu puts this back when a paste misses.
+            lastDictation = p.editMode ? nil : p.text
             TextInserter.insert(text: p.text, mode: config.insertMode,
-                                restoreClipboard: config.restoreClipboard && !keepOnClipboard,
+                                restoreClipboard: config.restoreClipboard,
                                 presaved: config.restoreClipboard ? p.presavedClipboard : nil)
             if config.historyEnabled {
                 History.append(raw: p.raw, cleaned: p.text, app: p.app,
@@ -492,8 +497,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             Log.write("\(p.editMode ? "edit" : "dictation"): \(String(format: "%.1f", p.seconds))s audio, whisper \(p.transcribeMs)ms, cleanup \(p.cleanupMs)ms, llm=\(p.usedLLM)")
             if p.editMode {
                 flashIfIdle("Edited" + celebrationSuffix(edit: true), ok: true)
-            } else if keepOnClipboard {
-                flashIfIdle("Inserted \(p.text.count) chars, kept on clipboard", ok: true)
+            } else if p.text.count >= 400 {
+                flashIfIdle("Inserted \(p.text.count) chars", ok: true)
             } else {
                 flashIfIdle((p.usedLLM ? "Inserted" : "Inserted raw transcript")
                             + celebrationSuffix(edit: false), ok: true)
@@ -754,6 +759,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(loginToggle)
         menu.addItem(.separator())
 
+        menu.addItem(actionItem("Copy last dictation", #selector(copyLastDictation)))
         menu.addItem(actionItem("Open config file", #selector(openConfig)))
         menu.addItem(actionItem("Reload config", #selector(reloadConfig)))
         menu.addItem(actionItem("Open history", #selector(openHistory)))
@@ -930,6 +936,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Task { await self.ensureOllama() }
         Log.write("config reloaded")
         refreshMenuState()
+    }
+
+    // Recovery for a paste that landed nowhere (focus moved while the
+    // dictation was still processing). On demand, so the clipboard is only
+    // taken over when the user actually asks for it.
+    @objc private func copyLastDictation() {
+        guard let text = lastDictation, !text.isEmpty else {
+            hud.flash("No dictation to copy", ok: false)
+            return
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        hud.flash("Copied \(text.count) chars", ok: true)
     }
 
     @objc private func openHistory() {
