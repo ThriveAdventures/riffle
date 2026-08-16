@@ -204,6 +204,46 @@ private func captureWindow(_ window: NSWindow, to path: String) {
     print("captured \(path)")
 }
 
+// Visual check: riffle --vocabtest <output.png>
+// Opens the vocabulary editor with sample data, exercises add/preview, and
+// captures its own window. Own-window capture needs no screen-recording
+// permission, the same trick --hudtest uses.
+func runVocabTest(outputPath: String) -> Never {
+    let app = NSApplication.shared
+    app.setActivationPolicy(.accessory)
+    // --vocabtest <png> real  loads the installed config instead of samples,
+    // to check the real data path without clicking through the menu.
+    let useRealConfig = CommandLine.arguments.contains("real")
+    let live = RiffleConfig.load()
+    let controller = VocabularyWindowController(
+        words: useRealConfig ? live.dictionary
+            : ["Acme Robotics", "Kubernetes", "PostgreSQL", "Claude", "SKU"],
+        rules: useRealConfig ? live.replacements
+            : [RiffleConfig.Replacement(find: "cloud code", replace: "Claude Code"),
+               RiffleConfig.Replacement(find: "btw", replace: "by the way")],
+        onSave: { words, rules in
+            print("save: \(words.count) words, \(rules.count) rules")
+        },
+        onPreview: { text, _, rules, useCleanup, done in
+            // Deterministic, so the capture never waits on a model.
+            let out = TextCleanup.applyReplacements(text, rules: rules)
+            done(useCleanup ? out : out)
+        })
+    controller.present()
+    controller.testFill(input: "ask cloud code to fix this btw")
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+        controller.testPreview()
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+        if let window = controller.window {
+            captureWindow(window, to: outputPath)
+        }
+        exit(0)
+    }
+    app.run()
+    exit(0)
+}
+
 // Headless pipeline check: riffle --selftest <wav file>
 // Exercises the same code paths the app uses: whisper-server supervision,
 // transcription, LLM cleanup, and the output guardrails.

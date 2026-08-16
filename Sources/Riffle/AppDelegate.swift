@@ -53,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var pressStart = Date.distantPast
 
     private var lastDictation: String?
+    private var vocabularyWindow: VocabularyWindowController?
     private var seqCounter = 0
     private var nextInsertSeq = 0
     private var completed: [Int: InsertPayload?] = [:]
@@ -772,6 +773,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(loginToggle)
         menu.addItem(.separator())
 
+        menu.addItem(actionItem("Edit vocabulary...", #selector(editVocabulary)))
         menu.addItem(actionItem("Copy last dictation", #selector(copyLastDictation)))
         menu.addItem(actionItem("Open config file", #selector(openConfig)))
         menu.addItem(actionItem("Reload config", #selector(reloadConfig)))
@@ -970,6 +972,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Task { await self.ensureOllama() }
         Log.write("config reloaded")
         refreshMenuState()
+    }
+
+    @objc private func editVocabulary() {
+        if let existing = vocabularyWindow {
+            existing.present()
+            return
+        }
+        let controller = VocabularyWindowController(
+            words: config.dictionary,
+            rules: config.replacements,
+            onSave: { [weak self] words, rules in
+                guard let self else { return }
+                config.dictionary = words
+                config.replacements = rules
+                config.save()
+                // The dictionary is passed to whisper-server as a decoding
+                // prompt at spawn, so it only takes effect on a restart.
+                whisper.shutdown()
+                whisper = WhisperService(config: config)
+                whisper.startIfNeeded()
+                whisperUp = false
+                Log.write("vocabulary saved: \(words.count) words, \(rules.count) replacements")
+                hud.flash("Vocabulary saved", ok: true)
+                refreshMenuState()
+                refreshHealth()
+            },
+            onPreview: { [weak self] text, words, rules, useCleanup, done in
+                guard let self else { return }
+                guard useCleanup else {
+                    done(TextCleanup.applyReplacements(text, rules: rules))
+                    return
+                }
+                Task {
+                    let raw = TextCleanup.basicTidy(text)
+                    do {
+                        let cleaned: String
+                        if self.config.cleanupEngine == "apple", AppleCleaner.isAvailable {
+                            cleaned = try await AppleCleaner.cleanup(transcript: text, appName: nil,
+                                                                     dictionary: words)
+                        } else {
+                            cleaned = try await self.ollama.cleanup(transcript: text, appName: nil,
+                                                                    dictionary: words)
+                        }
+                        let guarded = TextCleanup.guardrail(raw: raw, cleaned: cleaned)
+                        let final = TextCleanup.applyReplacements(guarded.0, rules: rules)
+                        let note = guarded.1 ? "" : "  (guardrail fell back to the raw transcript)"
+                        await MainActor.run { done(final + note) }
+                    } catch {
+                        await MainActor.run {
+                            done("Cleanup unavailable: \(error.localizedDescription)")
+                        }
+                    }
+                }
+            })
+        vocabularyWindow = controller
+        controller.present()
     }
 
     // Recovery for a paste that landed nowhere (focus moved while the

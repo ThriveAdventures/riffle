@@ -163,8 +163,13 @@ outright, after the LLM, every time:
 ]
 ```
 
-Edit with **Open config file**, then **Reload config** to apply without
-restarting. The menu's Vocabulary line shows how many words and rules are
+Both are editable in the menu under **Edit vocabulary...**, with a preview
+field that shows what your rules do to a sample sentence before you save:
+
+![The vocabulary editor](logos/vocabulary.png)
+
+You can also edit the JSON directly with **Open config file**, then
+**Reload config** to apply without restarting. The menu's Vocabulary line shows how many words and rules are
 loaded, so you can confirm an edit took effect. If the file has a JSON syntax
 error, Riffle keeps your current settings, says so, and leaves the file alone
 for you to fix.

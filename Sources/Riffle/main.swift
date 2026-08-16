@@ -8,6 +8,10 @@ if let idx = CommandLine.arguments.firstIndex(of: "--hudgif"),
    CommandLine.arguments.count > idx + 1 {
     runHudTest(capturePrefix: nil, framesDir: CommandLine.arguments[idx + 1])
 }
+if let idx = CommandLine.arguments.firstIndex(of: "--vocabtest"),
+   CommandLine.arguments.count > idx + 1 {
+    runVocabTest(outputPath: CommandLine.arguments[idx + 1])
+}
 if let idx = CommandLine.arguments.firstIndex(of: "--selftest"),
    CommandLine.arguments.count > idx + 1 {
     exit(runSelfTest(wavPath: CommandLine.arguments[idx + 1]))
