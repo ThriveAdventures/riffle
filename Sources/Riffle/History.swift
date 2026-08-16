@@ -29,4 +29,39 @@ enum History {
             try? line.write(to: url)
         }
     }
+
+    struct Entry {
+        let date: Date
+        let text: String
+        let app: String
+
+        // "18:55  Claude  858 chars" plus the opening words, enough to
+        // recognize a dictation without opening the file.
+        var menuLabel: String {
+            let clock = DateFormatter()
+            clock.dateFormat = "HH:mm"
+            let flat = text.replacingOccurrences(of: "\n", with: " ")
+            let preview = flat.count > 48 ? String(flat.prefix(48)) + "..." : flat
+            return "\(clock.string(from: date))  \(text.count) chars  \(preview)"
+        }
+    }
+
+    // Most recent dictations, newest first. Reads the tail of the file only,
+    // so a long history does not slow down opening the menu.
+    static func recent(limit: Int = 10) -> [Entry] {
+        guard let content = try? String(contentsOf: url, encoding: .utf8) else { return [] }
+        let parser = ISO8601DateFormatter()
+        var out: [Entry] = []
+        for line in content.split(separator: "\n").reversed() {
+            guard out.count < limit,
+                  let data = line.data(using: .utf8),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let text = obj["text"] as? String, !text.isEmpty,
+                  obj["edit"] as? Bool != true
+            else { continue }
+            let date = (obj["ts"] as? String).flatMap { parser.date(from: $0) } ?? Date()
+            out.append(Entry(date: date, text: text, app: obj["app"] as? String ?? ""))
+        }
+        return out
+    }
 }

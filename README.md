@@ -174,6 +174,11 @@ loaded, so you can confirm an edit took effect. If the file has a JSON syntax
 error, Riffle keeps your current settings, says so, and leaves the file alone
 for you to fix.
 
+If a dictation lands somewhere you did not expect, or the focused window
+moved while it was still processing, **Copy a recent dictation** lists the
+last ten with their time and length. Pick one and it goes back on the
+clipboard.
+
 Dictation history: `~/Library/Application Support/Riffle/history.jsonl`
 (menu: Open history). Local only. Delete the file any time.
 

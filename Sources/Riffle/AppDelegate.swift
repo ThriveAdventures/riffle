@@ -52,8 +52,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var ignoreNextUp = false
     private var pressStart = Date.distantPast
 
-    private var lastDictation: String?
     private var vocabularyWindow: VocabularyWindowController?
+    private var recentMenu: NSMenu!
+    private var recentEntries: [History.Entry] = []
     private var seqCounter = 0
     private var nextInsertSeq = 0
     private var completed: [Int: InsertPayload?] = [:]
@@ -497,7 +498,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // long dictations there hijacked every later paste (including
             // Universal Clipboard images from the iPhone). "Copy last
             // dictation" in the menu puts this back when a paste misses.
-            lastDictation = p.editMode ? nil : p.text
             TextInserter.insert(text: p.text, mode: config.insertMode,
                                 restoreClipboard: config.restoreClipboard,
                                 presaved: config.restoreClipboard ? p.presavedClipboard : nil)
@@ -774,7 +774,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
 
         menu.addItem(actionItem("Edit vocabulary...", #selector(editVocabulary)))
-        menu.addItem(actionItem("Copy last dictation", #selector(copyLastDictation)))
+        recentMenu = NSMenu()
+        let recentParent = NSMenuItem(title: "Copy a recent dictation", action: nil,
+                                      keyEquivalent: "")
+        recentParent.submenu = recentMenu
+        menu.addItem(recentParent)
         menu.addItem(actionItem("Open config file", #selector(openConfig)))
         menu.addItem(actionItem("Reload config", #selector(reloadConfig)))
         menu.addItem(actionItem("Open history", #selector(openHistory)))
@@ -802,6 +806,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func menuWillOpen(_ menu: NSMenu) {
+        rebuildRecentMenu()
         checkAccessibility(promptUser: false)
         startHotkeyIfPossible()
         refreshHealth()
@@ -1031,16 +1036,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     // Recovery for a paste that landed nowhere (focus moved while the
-    // dictation was still processing). On demand, so the clipboard is only
-    // taken over when the user actually asks for it.
-    @objc private func copyLastDictation() {
-        guard let text = lastDictation, !text.isEmpty else {
-            hud.flash("No dictation to copy", ok: false)
+    // dictation was still processing, or it went to the wrong window). Any
+    // of the last ten is one click away, so a lost dictation never needs
+    // the history file opened by hand.
+    private func rebuildRecentMenu() {
+        recentEntries = History.recent(limit: 10)
+        recentMenu.removeAllItems()
+        guard !recentEntries.isEmpty else {
+            let empty = NSMenuItem(title: "Nothing dictated yet", action: nil, keyEquivalent: "")
+            empty.isEnabled = false
+            recentMenu.addItem(empty)
             return
         }
+        for (index, entry) in recentEntries.enumerated() {
+            let item = NSMenuItem(title: entry.menuLabel, action: #selector(copyRecent(_:)),
+                                  keyEquivalent: "")
+            item.target = self
+            item.tag = index
+            item.toolTip = String(entry.text.prefix(400))
+            recentMenu.addItem(item)
+        }
+    }
+
+    @objc private func copyRecent(_ sender: NSMenuItem) {
+        guard sender.tag >= 0, sender.tag < recentEntries.count else { return }
+        let text = recentEntries[sender.tag].text
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
-        hud.flash("Copied \(text.count) chars", ok: true)
+        hud.flash("Copied \(text.count) chars, paste with cmd+v", ok: true)
     }
 
     @objc private func openHistory() {
